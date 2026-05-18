@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.7"
+  required_version = ">= 1.10"
 
   required_providers {
     aws = {
@@ -16,7 +16,7 @@ terraform {
     # bucket / region passed via `terraform init -backend-config=...`
     key            = "self-healing-k8s/terraform.tfstate"
     encrypt        = true
-    dynamodb_table = "terraform-state-lock"
+    use_lockfile   = true
   }
 }
 

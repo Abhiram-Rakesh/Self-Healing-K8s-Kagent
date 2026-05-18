@@ -42,7 +42,7 @@ For the full sequence (triage -> diagnosis -> remediation -> audit) see
 | Layer            | Technology                       | Purpose                                                       |
 |------------------|----------------------------------|---------------------------------------------------------------|
 | Infrastructure   | AWS EKS, VPC, ECR, Secrets Mgr   | Managed Kubernetes + image registry + secret store            |
-| IaC              | Terraform 1.7+, S3+DynamoDB backend | Reproducible cluster provisioning                          |
+| IaC              | Terraform 1.10+, S3 native locking  | Reproducible cluster provisioning (no DynamoDB needed)     |
 | Observability    | kube-prometheus-stack + Grafana  | Metrics, alerting, dashboards                                 |
 | Chaos            | Litmus ChaosCenter               | Repeatable failure injection                                  |
 | AI               | Google Gemini 2.5 Flash          | LLM diagnosis + remediation plan                              |
@@ -240,7 +240,6 @@ policies (or an equivalent custom policy):
 | `AmazonEC2ContainerRegistryFullAccess`| Create + push to the `kagent-healer` ECR repository              |
 | `SecretsManagerReadWrite`             | Push the Gemini API key + Slack webhook to Secrets Manager       |
 | `AmazonS3FullAccess`                  | Terraform state bucket access                                    |
-| `AmazonDynamoDBFullAccess`            | Terraform state-lock table                                       |
 | `CloudWatchLogsFullAccess`            | Cluster log groups                                               |
 
 Production accounts should narrow these — the policies above are a fast-path
@@ -267,7 +266,10 @@ Resolving deltas: 100% (.../...), done.
 **Success indicator:** `ls` shows `Makefile`, `terraform/`, `agent/`, `helm/`,
 `k8s/`, `scripts/`.
 
-### Step 2 — Create the Terraform state bucket and lock table
+### Step 2 — Create the Terraform state bucket
+
+Terraform 1.10+ uses [S3 native state locking](https://developer.hashicorp.com/terraform/language/backend/s3#state-locking) via
+conditional writes — no DynamoDB table required.
 
 ```bash
 export AWS_REGION=ap-south-1
@@ -288,32 +290,19 @@ aws s3api put-bucket-encryption \
   --server-side-encryption-configuration '{
     "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]
   }'
-
-# Create the state-lock table (DynamoDB).
-aws dynamodb create-table \
-  --table-name terraform-state-lock \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region "$AWS_REGION"
 ```
 
 Verify:
 ```bash
 aws s3 ls | grep "$TF_STATE_BUCKET"
-aws dynamodb describe-table --table-name terraform-state-lock --query 'Table.TableStatus'
 ```
 
 Expected output:
 ```
 2026-05-18 12:34:56 my-name-tf-state-123456789012
-"ACTIVE"
 ```
 
-**Success indicator:** Bucket appears in `aws s3 ls` and DynamoDB table status is `ACTIVE`.
-
-> **ap-south-1 note:** Always pass `--create-bucket-configuration LocationConstraint=ap-south-1`
-> when creating the S3 bucket. Unlike `us-east-1`, all other regions require this flag.
+**Success indicator:** Bucket appears in `aws s3 ls` with versioning enabled.
 
 ### Step 3 — Configure and provision infrastructure
 
