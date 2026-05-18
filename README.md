@@ -1,14 +1,5 @@
 # Self-Healing Kubernetes Cluster with KAgent + Gemini AI
 
-![CI](https://github.com/YOUR_USERNAME/self-healing-k8s-kagent/actions/workflows/ci.yml/badge.svg)
-![Terraform](https://github.com/YOUR_USERNAME/self-healing-k8s-kagent/actions/workflows/terraform.yml/badge.svg)
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Kubernetes](https://img.shields.io/badge/kubernetes-1.32-326CE5?logo=kubernetes&logoColor=white)
-![Python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
-![Terraform](https://img.shields.io/badge/terraform-1.7+-7B42BC?logo=terraform&logoColor=white)
-![AWS EKS](https://img.shields.io/badge/AWS-EKS-FF9900?logo=amazon-aws&logoColor=white)
-![CNCF Sandbox](https://img.shields.io/badge/CNCF-Sandbox-0086FF?logo=cncf&logoColor=white)
-
 An AI-powered self-healing platform for Amazon EKS. Prometheus alerts are routed
 to a Python agent running KAgent, which calls Gemini 2.5 Flash to diagnose the
 root cause, then executes a safe Kubernetes remediation (restart, scale, cordon)
@@ -31,9 +22,6 @@ flowchart LR
     AG -->|audit| CW[CloudWatch + Slack]
     AG -->|past cases| MEM[(SQLite memory)]
 ```
-
-For the full sequence (triage -> diagnosis -> remediation -> audit) see
-[`diagrams/low-level-flow.mmd`](diagrams/low-level-flow.mmd).
 
 ---
 
@@ -254,13 +242,6 @@ for a fresh dev account.
 ```bash
 git clone https://github.com/YOUR_USERNAME/self-healing-k8s-kagent.git
 cd self-healing-k8s-kagent
-```
-
-Expected output:
-```
-Cloning into 'self-healing-k8s-kagent'...
-remote: Counting objects: ..., done.
-Resolving deltas: 100% (.../...), done.
 ```
 
 **Success indicator:** `ls` shows `Makefile`, `terraform/`, `agent/`, `helm/`,
@@ -1019,17 +1000,6 @@ terraform -chdir=terraform destroy
 
 ---
 
-## Roadmap
-
-- [ ] V2: Slack HITL approval with interactive Block Kit buttons
-- [ ] V2: Live healing Grafana dashboard with action-by-action drill-down
-- [ ] V2: Litmus scheduled chaos experiments + scorecard
-- [ ] V3: ChromaDB semantic memory (replace SQLite for fuzzy recall)
-- [ ] V3: Predictive healing via Prometheus trend polling
-- [ ] V3: Multi-cluster support (federation-aware webhook routing)
-- [ ] V3: KAgent A2A multi-agent delegation between specialized SREs
-
----
 
 ## Contributing
 
@@ -1065,7 +1035,3 @@ make test
 ```
 
 ---
-
-## License
-
-MIT — see [LICENSE](LICENSE).
