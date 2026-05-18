@@ -2,8 +2,8 @@
 
 An AI-powered self-healing platform for Amazon EKS. Prometheus alerts are routed
 to a Python agent running KAgent, which calls Gemini 2.5 Flash to diagnose the
-root cause, then executes a safe Kubernetes remediation (restart, scale, cordon)
-behind a confidence threshold and a dry-run gate.
+root cause, then executes a safe Kubernetes remediation (restart, scale, cordon,
+or drain) behind a confidence threshold and a dry-run gate.
 
 ---
 
@@ -37,7 +37,7 @@ flowchart LR
 | Agent framework  | KAgent                           | Agent runtime / multi-stage pipeline                          |
 | Runtime          | Python 3.11 (FastAPI-style HTTP) | Webhook server, K8s client, Gemini SDK                        |
 | Memory           | SQLite (stdlib)                  | Past incident store — no external DB needed                   |
-| Packaging        | Docker (multi-stage, non-root)   | Reproducible agent image                                      |
+| Packaging        | Docker (multi-stage, non-root, amd64+arm64) | Reproducible agent image, runs on Graviton nodes     |
 | Deployment       | Helm v3                          | Templated K8s install of the agent                            |
 | CI/CD            | GitHub Actions + OIDC            | Lint, test, build, push, tag, terraform plan/apply            |
 
@@ -85,7 +85,7 @@ Expected output:
 
 **Success indicator:** `Account` shows your 12-digit AWS account ID.
 
-### 2. Terraform >= 1.7
+### 2. Terraform >= 1.10
 
 Linux:
 ```bash
@@ -107,10 +107,10 @@ terraform --version
 
 Expected output:
 ```
-Terraform v1.7.5
+Terraform v1.10.5
 ```
 
-**Success indicator:** Version is 1.7 or newer.
+**Success indicator:** Version is 1.10 or newer.
 
 ### 3. kubectl (pinned to 1.32)
 
@@ -600,6 +600,19 @@ helm upgrade --install kagent-healer helm/kagent-healer/ \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${KAGENT_IRSA_ARN}" \
   --set agent.dryRun="true" \
   --wait
+```
+
+For production clusters, overlay `values-prod.yaml` which enables live healing,
+higher confidence threshold (0.80), HPA, PodDisruptionBudget, and NetworkPolicy:
+
+```bash
+helm upgrade --install kagent-healer helm/kagent-healer/ \
+  --namespace kagent \
+  -f helm/kagent-healer/values-prod.yaml \
+  --set image.repository="${ECR_URL}" \
+  --set image.tag=latest \
+  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${KAGENT_IRSA_ARN}" \
+  --wait
 
 kubectl get pods -n kagent -l app.kubernetes.io/name=kagent-healer
 ```
@@ -693,7 +706,7 @@ and Alertmanager.
 | `PodCrashLooping`    | `rate(kube_pod_container_status_restarts_total[5m]) * 60 > 0.5` for 1m                    | `restart_pod`  | ≥ 0.75            | Patches the Deployment's `kubectl.kubernetes.io/restartedAt` annotation     |
 | `PodOOMKilled`       | `kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1`               | `restart_pod` *or* `scale_up` | ≥ 0.75 | If Gemini sees repeated OOMs across replicas, prefers `scale_up`            |
 | `PodPendingTooLong`  | `kube_pod_status_phase{phase="Pending"} == 1` for 5m                                      | `scale_up` *or* `notify_only` | ≥ 0.75 | Bumps replicas by 1 up to `MAX_REPLICAS` if cause is taint/resource pressure |
-| `NodeNotReady`       | `kube_node_status_condition{condition="Ready",status="true"} == 0` for 2m                 | `cordon_node`  | ≥ 0.80 + HITL     | Slack approval required (auto-approves after 300s if no response)           |
+| `NodeNotReady`       | `kube_node_status_condition{condition="Ready",status="true"} == 0` for 2m                 | `cordon_node` *or* `drain_node` | ≥ 0.80 + HITL | Slack approval required; drain evicts all non-DaemonSet pods (respects PDBs) |
 | `PVCUsageHigh`       | `kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 0.85` for 5m     | `notify_only`  | n/a               | Storage growth is a human decision — agent never resizes PVCs               |
 
 All confidence values below `0.70` are forced to `notify_only` regardless of
@@ -719,6 +732,27 @@ the action Gemini suggests (see [`agent/gemini_client.py`](agent/gemini_client.p
 | `SLACK_WEBHOOK_SECRET`  | `agent.slackWebhookSecret`          | Secrets Manager ID for the Slack URL (optional)                      | `kagent/slack-webhook`        | no                |
 | `WEBHOOK_PORT`          | `service.webhookPort`               | HTTP port for the Alertmanager webhook                               | `8000`                        | no                |
 | `METRICS_PORT`          | `service.metricsPort`               | Prometheus metrics port                                              | `8001`                        | no                |
+
+---
+
+## Prometheus metrics exposed
+
+The agent serves metrics on `:8001` (scraped by the `ServiceMonitor`).
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `kagent_alerts_total` | Counter | `severity` | Alerts received through the webhook |
+| `kagent_gemini_calls_total` | Counter | — | Total Gemini API calls |
+| `kagent_actions_total` | Counter | `action`, `executed` | Healing actions attempted |
+| `kagent_healing_seconds` | Histogram | — | End-to-end alert→resolution latency |
+| `kagent_last_confidence` | Gauge | — | Confidence score from the last Gemini response |
+| `kagent_requests_remaining_today` | Gauge | — | Remaining Gemini budget for the current UTC day |
+| `kagent_stage_duration_seconds` | Histogram | `stage` | Per-stage duration: `triage`, `diagnosis`, `remediation`, `audit` |
+| `kagent_stage_errors_total` | Counter | `stage` | Errors thrown by each pipeline stage |
+
+The Grafana dashboard surfaces all of these across 13 panels including p50/p95
+per-stage latency, stage error rate, and a budget-remaining stat with colour
+thresholds (red < 10, yellow < 50, green ≥ 50).
 
 ---
 
@@ -748,6 +782,17 @@ To add a new rule:
 The `kagent: "true"` label is what makes Alertmanager match the route in
 `k8s/monitoring/alertmanager-config.yaml`. Without it the alert fires in
 Prometheus but never reaches the agent.
+
+### Built-in self-monitoring rules
+
+Three rules in `alert-rules.yaml` watch the agent itself (note `kagent: "false"` —
+they fire to your normal alerting channel, not back into the healer):
+
+| Alert | Condition | Severity |
+|-------|-----------|----------|
+| `KAgentDown` | Agent unreachable for 2m (`up{job="kagent-healer"} == 0`) | critical |
+| `KAgentBudgetNearExhaustion` | < 20 Gemini requests remaining today | warning |
+| `KAgentHighStageErrorRate` | > 0.5 stage errors/min over 5m | warning |
 
 ---
 
@@ -798,6 +843,26 @@ When you're done for the day, run `./scripts/teardown.sh` — see the
 ---
 
 ## Day-2 operations
+
+### Open all service UIs
+
+```bash
+make port-forward   # or ./scripts/port-forward.sh
+```
+
+This starts six tunnels simultaneously:
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Grafana | `http://localhost:3000` | admin / admin |
+| Prometheus | `http://localhost:9090` | — |
+| Alertmanager | `http://localhost:9093` | — |
+| Loki (LogQL API) | `http://localhost:3100` | — |
+| KAgent UI | `http://localhost:8080` | — |
+| Healer webhook | `http://localhost:8000/health` | — |
+
+Press `Ctrl-C` to stop all tunnels. Logs for each forward are written to
+`/tmp/kagent-portforward/`.
 
 ### View agent logs
 
@@ -1042,35 +1107,18 @@ terraform -chdir=terraform destroy
 
 ## Contributing
 
-PRs welcome — please follow [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide — setup, code style,
+adding healing actions, adding alert rules, and the safety checklist every PR
+touching the remediator must pass.
 
-### Add a new healing action
+PRs use [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md).
+Dependencies are kept up to date automatically via
+[Dependabot](.github/dependabot.yml) (weekly updates for Actions, pip, Docker,
+and Terraform providers).
 
-1. Define the action in [`agent/remediator.py`](agent/remediator.py):
-   - Add it to `VALID_ACTIONS` in `agent/gemini_client.py`.
-   - Write a `_my_new_action()` method that calls the relevant K8s API.
-   - Wire it up in the action-dispatch `if action == ...` block.
-2. Update the **Healing actions reference** table in this README.
-3. Add a unit test in [`agent/tests/test_remediator.py`](agent/tests/test_remediator.py)
-   covering: confidence gate, protected namespace gate, dry-run gate, real action.
-4. Update the system prompt in `agent/gemini_client.py` so Gemini knows when to
-   recommend the new action.
+## Security
 
-### Add a new alert rule
-
-1. Append to `spec.groups[0].rules` in
-   [`k8s/monitoring/alert-rules.yaml`](k8s/monitoring/alert-rules.yaml).
-2. Make sure to include `labels.kagent: "true"` and
-   `annotations.pod / annotations.namespace`.
-3. Apply and verify in the Prometheus UI's `/alerts` page.
-4. (Optional) Add a sample workload under `k8s/test-workloads/` so the demo
-   exercises it.
-
-### Run the test suite locally
-
-```bash
-make install
-make test
-```
+To report a vulnerability, see [SECURITY.md](SECURITY.md). Do **not** open a
+public issue.
 
 ---
