@@ -105,6 +105,17 @@ def _build_metrics(cost_guard: CostGuard) -> dict[str, object]:
     budget_remaining = Gauge(
         "kagent_requests_remaining_today", "Remaining daily Gemini requests"
     )
+    stage_duration = Histogram(
+        "kagent_stage_duration_seconds",
+        "Per-stage pipeline duration",
+        ["stage"],
+        buckets=[0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0],
+    )
+    stage_errors = Counter(
+        "kagent_stage_errors_total",
+        "Per-stage pipeline errors",
+        ["stage"],
+    )
 
     # Periodically refresh budget gauge via callback.
     budget_remaining.set_function(lambda: float(cost_guard.remaining()))
@@ -116,6 +127,8 @@ def _build_metrics(cost_guard: CostGuard) -> dict[str, object]:
         "healing_seconds": healing_seconds,
         "confidence_gauge": confidence_gauge,
         "budget_remaining": budget_remaining,
+        "stage_duration": stage_duration,
+        "stage_errors": stage_errors,
     }
 
 

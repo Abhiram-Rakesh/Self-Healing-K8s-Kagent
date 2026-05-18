@@ -27,10 +27,17 @@ run: ## Run agent locally (requires .env)
 demo: ## Run end-to-end demo (chaos injection + healing loop)
 	./scripts/demo.sh
 
+loki: ## Install Loki + Promtail in the monitoring namespace
+	helm repo add grafana https://grafana.github.io/helm-charts --force-update
+	helm upgrade --install loki grafana/loki-stack \
+	  --namespace monitoring --create-namespace \
+	  -f helm/loki/values.yaml --wait
+	kubectl apply -f k8s/monitoring/loki-datasource.yaml
+
 port-forward: ## Open all service tunnels (Grafana, Prometheus, Alertmanager, KAgent UI)
 	./scripts/port-forward.sh
 
 teardown: ## Destroy everything in correct order (asks for confirmation)
 	./scripts/teardown.sh
 
-.PHONY: help install lint test build run demo port-forward teardown
+.PHONY: help install lint test build run demo loki port-forward teardown

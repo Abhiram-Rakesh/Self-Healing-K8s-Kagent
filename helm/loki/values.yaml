@@ -1,0 +1,27 @@
+# loki-stack: Loki + Promtail bundled in one chart.
+# helm repo add grafana https://grafana.github.io/helm-charts
+# helm upgrade --install loki grafana/loki-stack -n monitoring -f helm/loki/values.yaml
+
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: gp3
+
+promtail:
+  enabled: true
+  config:
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+    snippets:
+      # Tag every log line with pod/namespace/container labels.
+      pipelineStages:
+        - docker: {}
+
+# Grafana and Prometheus come from kube-prometheus-stack — disable bundled copies.
+grafana:
+  enabled: false
+
+prometheus:
+  enabled: false

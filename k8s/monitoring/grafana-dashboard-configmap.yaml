@@ -20,14 +20,39 @@ data:
       "timezone": "browser",
       "time": {"from": "now-6h", "to": "now"},
       "refresh": "30s",
-      "templating": {"list": []},
+      "templating": {
+        "list": [
+          {
+            "current": {},
+            "hide": 0,
+            "includeAll": false,
+            "label": "Prometheus",
+            "name": "datasource",
+            "options": [],
+            "query": "prometheus",
+            "refresh": 1,
+            "type": "datasource"
+          },
+          {
+            "current": {},
+            "hide": 0,
+            "includeAll": false,
+            "label": "Loki",
+            "name": "loki_datasource",
+            "options": [],
+            "query": "loki",
+            "refresh": 1,
+            "type": "datasource"
+          }
+        ]
+      },
       "panels": [
         {
           "id": 1,
           "type": "stat",
           "title": "Alerts received (total)",
           "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {"expr": "sum(kagent_alerts_total)", "refId": "A"}
           ],
@@ -38,7 +63,7 @@ data:
           "type": "stat",
           "title": "Actions executed",
           "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {"expr": "sum(kagent_actions_total{executed=\"true\"})", "refId": "A"}
           ],
@@ -49,7 +74,7 @@ data:
           "type": "stat",
           "title": "Avg confidence",
           "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {"expr": "avg_over_time(kagent_last_confidence[1h])", "refId": "A"}
           ],
@@ -61,7 +86,7 @@ data:
           "type": "stat",
           "title": "Avg MTTR (seconds)",
           "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
-          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {"expr": "rate(kagent_healing_seconds_sum[1h]) / rate(kagent_healing_seconds_count[1h])", "refId": "A"}
           ],
@@ -73,7 +98,7 @@ data:
           "type": "timeseries",
           "title": "Alert rate by severity",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
-          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {"expr": "sum by (severity) (rate(kagent_alerts_total[5m]))", "refId": "A", "legendFormat": "{{severity}}"}
           ]
@@ -83,7 +108,7 @@ data:
           "type": "timeseries",
           "title": "Healing duration (p50 / p95)",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
-          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {"expr": "histogram_quantile(0.50, sum by (le) (rate(kagent_healing_seconds_bucket[5m])))", "refId": "A", "legendFormat": "p50"},
             {"expr": "histogram_quantile(0.95, sum by (le) (rate(kagent_healing_seconds_bucket[5m])))", "refId": "B", "legendFormat": "p95"}
@@ -93,9 +118,9 @@ data:
         {
           "id": 7,
           "type": "timeseries",
-          "title": "Gemini confidence",
+          "title": "Gemini confidence over time",
           "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
-          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {"expr": "kagent_last_confidence", "refId": "A", "legendFormat": "confidence"}
           ],
@@ -106,7 +131,7 @@ data:
           "type": "piechart",
           "title": "Actions by type",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
-          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {"expr": "sum by (action) (kagent_actions_total)", "refId": "A", "legendFormat": "{{action}}"}
           ]
@@ -116,19 +141,80 @@ data:
           "type": "piechart",
           "title": "Alerts by severity",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
-          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {"expr": "sum by (severity) (kagent_alerts_total)", "refId": "A", "legendFormat": "{{severity}}"}
           ]
         },
         {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Pipeline stage duration (p50 / p95)",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 28},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum by (stage, le) (rate(kagent_stage_duration_seconds_bucket[5m])))",
+              "refId": "A",
+              "legendFormat": "p50 {{stage}}"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum by (stage, le) (rate(kagent_stage_duration_seconds_bucket[5m])))",
+              "refId": "B",
+              "legendFormat": "p95 {{stage}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}}
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Stage errors per minute",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {
+              "expr": "sum by (stage) (rate(kagent_stage_errors_total[5m])) * 60",
+              "refId": "A",
+              "legendFormat": "{{stage}}"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short", "min": 0}}
+        },
+        {
+          "id": 13,
+          "type": "stat",
+          "title": "Gemini budget remaining today",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {"expr": "kagent_requests_remaining_today", "refId": "A"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none"},
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "yellow", "value": 10},
+                  {"color": "green", "value": 50}
+                ]
+              }
+            }
+          }
+        },
+        {
           "id": 10,
           "type": "table",
-          "title": "Recent healing events (last 20)",
-          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 28},
-          "datasource": {"type": "loki", "uid": "loki"},
+          "title": "Recent healing events (live log)",
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 44},
+          "datasource": {"type": "loki", "uid": "${loki_datasource}"},
           "targets": [
-            {"expr": "{namespace=\"kagent\", app_kubernetes_io_name=\"kagent-healer\"} |= \"AUDIT\" | line_format \"{{ __line__ }}\"", "refId": "A"}
+            {
+              "expr": "{namespace=\"kagent\", app_kubernetes_io_name=\"kagent-healer\"} |= \"AUDIT\" | line_format \"{{ __line__ }}\"",
+              "refId": "A"
+            }
           ],
           "options": {"showHeader": true, "sortBy": [{"desc": true, "displayName": "Time"}]}
         }

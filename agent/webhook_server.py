@@ -26,6 +26,26 @@ logger = logging.getLogger(__name__)
 VERSION = "1.0.0"
 
 
+def _time_stage(metrics: Any, stage: str, fn: Any, *args: Any) -> Any:
+    """Call fn(*args), recording duration and incrementing error counter on exception."""
+    t = time.time()
+    try:
+        return fn(*args)
+    except Exception:
+        if metrics:
+            try:
+                metrics["stage_errors"].labels(stage=stage).inc()
+            except Exception:
+                pass
+        raise
+    finally:
+        if metrics:
+            try:
+                metrics["stage_duration"].labels(stage=stage).observe(time.time() - t)
+            except Exception:
+                pass
+
+
 class HealingPipeline:
     """Bundles the four pipeline stages for a single request."""
 
@@ -49,7 +69,7 @@ class HealingPipeline:
             logger.info("Skipping resolved alert")
             return None
 
-        triage_result = self.triage.triage(alert)
+        triage_result = _time_stage(self.metrics, "triage", self.triage.triage, alert)
         if triage_result is None:
             return None
 
@@ -61,7 +81,7 @@ class HealingPipeline:
             except Exception:
                 pass
 
-        plan = self.diagnosis.diagnose(triage_result)
+        plan = _time_stage(self.metrics, "diagnosis", self.diagnosis.diagnose, triage_result)
 
         if self.metrics:
             try:
@@ -70,7 +90,7 @@ class HealingPipeline:
             except Exception:
                 pass
 
-        result = self.remediation.execute(plan)
+        result = _time_stage(self.metrics, "remediation", self.remediation.execute, plan)
 
         if self.metrics:
             try:
@@ -82,7 +102,9 @@ class HealingPipeline:
             except Exception:
                 pass
 
-        record = self.audit.record(triage_result, plan, result)
+        record = _time_stage(
+            self.metrics, "audit", self.audit.record, triage_result, plan, result
+        )
         logger.info("Pipeline result: %s", json.dumps(record, default=str))
         return record
 
