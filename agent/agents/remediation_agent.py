@@ -18,7 +18,7 @@ from agent.remediator import Remediator
 
 logger = logging.getLogger(__name__)
 
-REQUIRES_APPROVAL = {"cordon_node"}
+REQUIRES_APPROVAL = {"cordon_node", "drain_node"}
 APPROVAL_TIMEOUT_SECONDS = int(os.environ.get("APPROVAL_TIMEOUT_SECONDS", "300"))
 
 

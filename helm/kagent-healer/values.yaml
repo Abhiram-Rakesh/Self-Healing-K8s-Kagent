@@ -44,7 +44,7 @@ securityContext:
   capabilities:
     drop:
       - ALL
-  readOnlyRootFilesystem: false
+  readOnlyRootFilesystem: true
   runAsNonRoot: true
   runAsUser: 1000
 
@@ -80,6 +80,13 @@ rbac:
 
 # Optional environment overrides applied on top of agent.*
 extraEnv: []
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+networkPolicy:
+  enabled: false
 
 nodeSelector: {}
 tolerations: []

@@ -19,3 +19,4 @@ data:
   GEMINI_MODEL: {{ .Values.agent.geminiModel | quote }}
   WEBHOOK_PORT: {{ .Values.service.webhookPort | quote }}
   METRICS_PORT: {{ .Values.service.metricsPort | quote }}
+  PYTHONDONTWRITEBYTECODE: "1"

@@ -144,6 +144,43 @@ class Remediator:
             name=node_name, body={"spec": {"unschedulable": True}}
         )
 
+    def _drain_node(self, node_name: str) -> str:
+        self._cordon_node(node_name)
+        pods = self._core.list_pod_for_all_namespaces(
+            field_selector=f"spec.nodeName={node_name}"
+        )
+        evicted: list[str] = []
+        skipped: list[str] = []
+        for pod in pods.items:
+            owners = pod.metadata.owner_references or []
+            if any(o.kind in ("DaemonSet", "Node") for o in owners):
+                skipped.append(pod.metadata.name)
+                continue
+            if pod.metadata.namespace in self.protected:
+                skipped.append(pod.metadata.name)
+                continue
+            try:
+                self._core.create_namespaced_pod_eviction(
+                    name=pod.metadata.name,
+                    namespace=pod.metadata.namespace,
+                    body=k8s_client.V1Eviction(
+                        metadata=k8s_client.V1ObjectMeta(
+                            name=pod.metadata.name,
+                            namespace=pod.metadata.namespace,
+                        )
+                    ),
+                )
+                evicted.append(pod.metadata.name)
+            except ApiException as exc:
+                if exc.status == 429:
+                    skipped.append(f"{pod.metadata.name}(PDB-blocked)")
+                else:
+                    logger.warning("Eviction of %s failed: %s", pod.metadata.name, exc)
+        return (
+            f"Drained node {node_name}: cordoned + evicted {len(evicted)} pod(s), "
+            f"skipped {len(skipped)} (DaemonSet/protected/PDB-blocked)"
+        )
+
     # -------- entry point ------------------------------------------------
 
     def execute(self, plan: dict[str, Any]) -> dict[str, Any]:
@@ -212,9 +249,10 @@ class Remediator:
                 new_replicas = self._scale_up(namespace, target)
                 reason = f"Scaled deployment/{target} to {new_replicas} replicas"
             elif action == "cordon_node":
-                node_name = target
-                self._cordon_node(node_name)
-                reason = f"Cordoned node {node_name}"
+                self._cordon_node(target)
+                reason = f"Cordoned node {target}"
+            elif action == "drain_node":
+                reason = self._drain_node(target)
             else:
                 return _result(
                     plan,

@@ -31,6 +31,9 @@ podDisruptionBudget:
   enabled: true
   minAvailable: 1
 
+networkPolicy:
+  enabled: true
+
 affinity:
   podAntiAffinity:
     preferredDuringSchedulingIgnoredDuringExecution:
