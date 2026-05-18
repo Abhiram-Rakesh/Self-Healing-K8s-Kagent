@@ -1,0 +1,36 @@
+.git
+.github
+.gitignore
+.dockerignore
+.env
+.env.*
+!.env.example
+*.md
+README.md
+LICENSE
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+.venv
+venv
+
+# IaC / cluster
+terraform/
+helm/
+k8s/
+scripts/
+diagrams/
+
+# Editor
+.vscode
+.idea
+
+# Tests are not needed in the image
+agent/tests/

@@ -1,0 +1,30 @@
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: demo-app-pod-delete
+  namespace: litmus
+  labels:
+    app.kubernetes.io/name: demo-app-pod-delete
+    app.kubernetes.io/component: chaos
+    app.kubernetes.io/part-of: kagent-healer
+spec:
+  appinfo:
+    appns: default
+    applabel: "app=demo-app"
+    appkind: deployment
+  chaosServiceAccount: litmus-admin
+  engineState: active
+  annotationCheck: "false"
+  experiments:
+    - name: pod-delete
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "60"
+            - name: CHAOS_INTERVAL
+              value: "10"
+            - name: PODS_AFFECTED_PERC
+              value: "50"
+            - name: FORCE
+              value: "true"

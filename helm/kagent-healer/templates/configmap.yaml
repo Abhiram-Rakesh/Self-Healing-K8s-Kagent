@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kagent-healer.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kagent-healer.labels" . | nindent 4 }}
+data:
+  DRY_RUN: {{ .Values.agent.dryRun | quote }}
+  CONFIDENCE_THRESHOLD: {{ .Values.agent.confidenceThreshold | quote }}
+  MAX_REPLICAS: {{ .Values.agent.maxReplicas | quote }}
+  DAILY_REQUEST_LIMIT: {{ .Values.agent.dailyRequestLimit | quote }}
+  MEMORY_DB_PATH: {{ .Values.agent.memoryDbPath | quote }}
+  AUDIT_LOG_PATH: {{ .Values.agent.auditLogPath | quote }}
+  LOG_LEVEL: {{ .Values.agent.logLevel | quote }}
+  SECRETS_MANAGER_REGION: {{ .Values.agent.secretsManagerRegion | quote }}
+  GEMINI_API_KEY_SECRET: {{ .Values.agent.geminiApiKeySecret | quote }}
+  SLACK_WEBHOOK_SECRET: {{ .Values.agent.slackWebhookSecret | quote }}
+  GEMINI_MODEL: {{ .Values.agent.geminiModel | quote }}
+  WEBHOOK_PORT: {{ .Values.service.webhookPort | quote }}
+  METRICS_PORT: {{ .Values.service.metricsPort | quote }}

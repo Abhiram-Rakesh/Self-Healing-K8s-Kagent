@@ -1,0 +1,17 @@
+apiVersion: v2
+name: kagent-healer
+description: AI-powered Kubernetes self-healing agent using KAgent and Gemini
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - kagent
+  - gemini
+  - self-healing
+  - kubernetes
+  - ai-agents
+home: https://github.com/YOUR_USERNAME/self-healing-k8s-kagent
+sources:
+  - https://github.com/YOUR_USERNAME/self-healing-k8s-kagent
+maintainers:
+  - name: Self-Healing K8s KAgent Contributors

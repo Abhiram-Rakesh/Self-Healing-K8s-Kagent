@@ -1,0 +1,49 @@
+sequenceDiagram
+    autonumber
+    participant AM as Alertmanager
+    participant WH as Webhook Server (:8000)
+    participant TR as TriageAgent
+    participant CB as ContextBuilder
+    participant MEM as RunbookMemory (SQLite)
+    participant CG as CostGuard
+    participant GC as GeminiClient
+    participant RM as Remediator
+    participant AU as AuditAgent
+    participant K as Kubernetes API
+    participant SL as Slack / CloudWatch
+
+    AM->>WH: POST /webhook {alerts:[...]}
+    WH-->>AM: 200 (async processing)
+    WH->>TR: triage(alert)
+    alt duplicate within TTL
+        TR-->>WH: None (drop)
+    else new alert
+        TR->>CB: build(alert)
+        CB->>K: pod logs / events / describe / node
+        K-->>CB: data (or "Unavailable: ...")
+        CB-->>TR: context dict
+        TR->>MEM: recall(alert_type)
+        MEM-->>TR: past cases
+        TR->>CG: check_and_increment()
+        alt budget exhausted
+            CG-->>TR: False -> notify_only plan
+        else allowed
+            CG-->>TR: True
+            TR->>GC: diagnose(context, past_cases)
+            GC->>GC: build prompt + system rules
+            GC-->>TR: plan {action, target, confidence, ...}
+        end
+        TR->>RM: execute(plan)
+        alt safety gate fails (confidence/protected ns)
+            RM-->>TR: executed=false (reason)
+        else dry_run=true
+            RM-->>TR: executed=true (dry_run)
+        else execute
+            RM->>K: patch deployment / scale / cordon node
+            K-->>RM: ok / api error
+            RM-->>TR: executed=true/false
+        end
+        TR->>AU: record(triage, plan, result)
+        AU->>SL: Slack notification + CloudWatch metric
+        AU->>MEM: store(incident)
+    end

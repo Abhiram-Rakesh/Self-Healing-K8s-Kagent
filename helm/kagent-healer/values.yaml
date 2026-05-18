@@ -1,0 +1,86 @@
+replicaCount: 1
+
+image:
+  repository: ""
+  tag: "latest"
+  pullPolicy: Always
+
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  name: kagent-healer
+  # Annotated at deploy time with the IRSA role ARN, e.g.:
+  #   eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/kagent-healer-irsa
+  annotations: {}
+
+agent:
+  dryRun: "true"
+  confidenceThreshold: "0.75"
+  maxReplicas: "10"
+  dailyRequestLimit: "200"
+  memoryDbPath: "/tmp/kagent-memory.db"
+  auditLogPath: "/tmp/kagent-audit.jsonl"
+  logLevel: "INFO"
+  secretsManagerRegion: "us-east-1"
+  geminiApiKeySecret: "kagent/gemini-api-key"
+  slackWebhookSecret: "kagent/slack-webhook"
+  geminiModel: "gemini-2.5-flash"
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8001"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+service:
+  type: ClusterIP
+  webhookPort: 8000
+  metricsPort: 8001
+
+serviceMonitor:
+  enabled: true
+  interval: 15s
+  labels: {}
+  metricRelabelings: []
+  relabelings: []
+
+hpa:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+# RBAC the agent needs in-cluster (pod logs, events, deployments, nodes).
+rbac:
+  create: true
+
+# Optional environment overrides applied on top of agent.*
+extraEnv: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,30 @@
+services:
+  kagent-healer:
+    build: .
+    image: kagent-healer:local
+    container_name: kagent-healer
+    env_file: .env
+    environment:
+      DRY_RUN: "true"
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"   # webhook
+      - "8001:8001"   # metrics
+    volumes:
+      # Mount local kubeconfig for talking to a dev cluster (kind / minikube).
+      - ${HOME}/.kube:/home/kagent/.kube:ro
+      - kagent-state:/tmp
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  kagent-state:

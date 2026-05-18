@@ -1,0 +1,21 @@
+flowchart LR
+    subgraph K8s["AWS EKS Cluster"]
+        P[Workload Pods] -->|metrics| PR[Prometheus]
+        PR -->|alerts fire| AM[Alertmanager]
+        AM -->|webhook| AG[kagent-healer Agent]
+        AG -->|read logs / events / pod spec| K8sAPI[Kubernetes API]
+        AG -->|patch deployment / cordon node| K8sAPI
+        AG -->|metrics :8001| PR
+    end
+
+    AG -->|diagnose| G[(Gemini 2.5 Flash)]
+    AG -->|optional Slack notify| S[Slack]
+    AG -->|audit| CW[CloudWatch Metrics & Logs]
+    AG -->|past cases| MEM[(SQLite memory)]
+
+    classDef agent fill:#4f46e5,color:#fff,stroke:#312e81;
+    classDef ai fill:#16a34a,color:#fff,stroke:#14532d;
+    classDef store fill:#0891b2,color:#fff,stroke:#155e75;
+    class AG agent
+    class G ai
+    class MEM,CW store

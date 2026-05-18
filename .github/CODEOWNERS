@@ -1,0 +1,9 @@
+# Default owners — replace with real GitHub handles before publishing.
+*           @YOUR_USERNAME
+
+# Critical paths get extra eyes.
+/agent/remediator.py            @YOUR_USERNAME
+/agent/agents/                  @YOUR_USERNAME
+/k8s/monitoring/                @YOUR_USERNAME
+/terraform/modules/iam/         @YOUR_USERNAME
+/.github/workflows/             @YOUR_USERNAME

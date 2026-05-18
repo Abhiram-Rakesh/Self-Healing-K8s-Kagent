@@ -1,0 +1,30 @@
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: demo-app-memory-hog
+  namespace: litmus
+  labels:
+    app.kubernetes.io/name: demo-app-memory-hog
+    app.kubernetes.io/component: chaos
+    app.kubernetes.io/part-of: kagent-healer
+spec:
+  appinfo:
+    appns: default
+    applabel: "app=demo-app"
+    appkind: deployment
+  chaosServiceAccount: litmus-admin
+  engineState: active
+  annotationCheck: "false"
+  experiments:
+    - name: pod-memory-hog
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "60"
+            - name: MEMORY_CONSUMPTION
+              value: "300"
+            - name: NUMBER_OF_WORKERS
+              value: "1"
+            - name: PODS_AFFECTED_PERC
+              value: "100"
