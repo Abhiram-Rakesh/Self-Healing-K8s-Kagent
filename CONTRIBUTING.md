@@ -30,7 +30,7 @@ make test
 |------|----------------|
 | `ruff` | Python linting (E/F/W/I rules) |
 | `black` | Python formatting (88-char line length) |
-| `mypy` | Static type checking (`--ignore-missing-imports`) |
+| `mypy` | Static type checking (`--ignore-missing-imports`) — **failures block CI** |
 | `hadolint` | Dockerfile best practices |
 | `shellcheck` | Shell script correctness |
 | `terraform fmt` | HCL formatting |
@@ -53,12 +53,22 @@ mock everything at the boundary.
 
 1. Implement the action method in `agent/remediator.py` (`_my_action`).
 2. Wire it into `Remediator.execute()` under the action name string.
-3. If the action is high-impact, add its name to `REQUIRES_APPROVAL` in
-   `agent/agents/remediation_agent.py`.
-4. Add a Prometheus alert rule in `k8s/monitoring/alert-rules.yaml` that
+3. If the action is high-impact (destructive or cluster-wide), add its name to
+   `REQUIRES_APPROVAL` in `agent/agents/remediation_agent.py` — the
+   `ApprovalStore` flow will handle the Slack notification and
+   `POST /approve/<id>` wait automatically.
+4. If the action scales resources **up**, store the original count in
+   `self._scale_state` (keyed by `plan.get("alert_key")`) so
+   `scale_down_if_tracked()` can reverse it when the alert resolves. See the
+   existing `scale_up` path in `Remediator.execute()` as the pattern to follow.
+5. The context dict passed to Gemini now includes `deployment_name` (resolved
+   from the pod's ownerReferences). Reference it in your system prompt
+   additions rather than relying on Gemini to infer the deployment from the pod
+   name.
+6. Add a Prometheus alert rule in `k8s/monitoring/alert-rules.yaml` that
    can trigger the new action.
-5. Add unit tests in `agent/tests/test_remediator.py`.
-6. Update the healing actions table in `README.md`.
+7. Add unit tests in `agent/tests/test_remediator.py`.
+8. Update the healing actions table in `README.md`.
 
 ## Adding a new alert rule
 
@@ -82,7 +92,18 @@ mock everything at the boundary.
 - [ ] `PROTECTED_NAMESPACES` still includes `kube-system`, `kagent`, `monitoring`
 - [ ] No new action executes without passing the confidence gate
 - [ ] `DRY_RUN=true` remains the default in `helm/kagent-healer/values.yaml`
-- [ ] High-impact actions are listed in `REQUIRES_APPROVAL`
+- [ ] High-impact actions are listed in `REQUIRES_APPROVAL` (triggers the `ApprovalStore` HITL flow)
+- [ ] Scale-modifying actions store their pre-change state in `_scale_state` and are reversed by `scale_down_if_tracked()` on alert resolution
+- [ ] `WEBHOOK_TOKEN` is never hardcoded — leave `agent.webhookToken` empty in `values.yaml` and inject via `extraEnv` referencing a K8s Secret in production
+
+## Helm chart changes
+
+When modifying the Helm chart:
+
+- **New env vars** belong in `helm/kagent-healer/templates/configmap.yaml` (non-sensitive) or injected via `extraEnv` referencing a K8s Secret (sensitive values like tokens or API keys). Never put secret values directly in `values.yaml`.
+- **Persistence** is controlled by `persistence.enabled`. When `true`, the chart provisions a PVC and mounts it at `/data`; the configmap automatically overrides `MEMORY_DB_PATH` and `AUDIT_LOG_PATH` to `/data/...`. Dev default is `false` (emptyDir at `/tmp`); production default (`values-prod.yaml`) is `true`.
+- **New volumes** must be mounted explicitly in `deployment.yaml` — the root filesystem is read-only (`readOnlyRootFilesystem: true`), so any path the agent writes to needs either an emptyDir or PVC mount.
+- Run `helm lint helm/kagent-healer/ --set image.repository=placeholder` before pushing.
 
 ## Commit messages
 
