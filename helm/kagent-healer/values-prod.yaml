@@ -1,7 +1,11 @@
 # Production overrides. Apply with:
 #   helm upgrade --install kagent-healer helm/kagent-healer/ -f values-prod.yaml ...
 
-replicaCount: 2
+# SQLite does not support concurrent writes from multiple pods sharing the same
+# PVC. Keep replicaCount=1 and hpa.enabled=false while persistence is enabled.
+# To run multiple replicas, replace RunbookMemory with a shared database backend
+# and set persistence.enabled=false.
+replicaCount: 1
 
 persistence:
   enabled: true
@@ -26,10 +30,7 @@ resources:
     memory: 768Mi
 
 hpa:
-  enabled: true
-  minReplicas: 2
-  maxReplicas: 5
-  targetCPUUtilizationPercentage: 70
+  enabled: false  # disabled — see replicaCount note above
 
 podDisruptionBudget:
   enabled: true

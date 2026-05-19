@@ -1,12 +1,14 @@
 sequenceDiagram
     autonumber
     participant AM as Alertmanager
+    participant OP as Operator
     participant WH as Webhook Server (:8000)
     participant TR as TriageAgent
     participant CB as ContextBuilder
     participant MEM as RunbookMemory (SQLite)
     participant CG as CostGuard
     participant GC as GeminiClient
+    participant AS as ApprovalStore
     participant RM as Remediator
     participant AU as AuditAgent
     participant K as Kubernetes API
@@ -14,36 +16,55 @@ sequenceDiagram
 
     AM->>WH: POST /webhook {alerts:[...]}
     WH-->>AM: 200 (async processing)
-    WH->>TR: triage(alert)
-    alt duplicate within TTL
-        TR-->>WH: None (drop)
-    else new alert
-        TR->>CB: build(alert)
-        CB->>K: pod logs / events / describe / node
-        K-->>CB: data (or "Unavailable: ...")
-        CB-->>TR: context dict
-        TR->>MEM: recall(alert_type)
-        MEM-->>TR: past cases
-        TR->>CG: check_and_increment()
-        alt budget exhausted
-            CG-->>TR: False -> notify_only plan
-        else allowed
-            CG-->>TR: True
-            TR->>GC: diagnose(context, past_cases)
-            GC->>GC: build prompt + system rules
-            GC-->>TR: plan {action, target, confidence, ...}
+
+    alt status == "resolved"
+        WH->>RM: scale_down_if_tracked(alert_key)
+        RM->>K: patch deployment (restore original replicas)
+    else status == "firing"
+        WH->>TR: triage(alert)
+        alt duplicate within TTL
+            TR-->>WH: None (drop)
+        else new alert
+            TR->>CB: build(alert)
+            CB->>K: pod logs / events / describe / node conditions
+            CB->>K: ownerRef chain: Pod → ReplicaSet → Deployment
+            K-->>CB: context data (partial on error)
+            CB-->>TR: context dict (incl. deployment_name)
+            TR->>MEM: recall(alert_type)
+            MEM-->>TR: past cases
+            TR->>CG: check_and_increment()
+            alt budget exhausted
+                CG-->>TR: False → notify_only plan
+            else budget ok
+                CG-->>TR: True
+                TR->>GC: diagnose(context, past_cases)
+                GC-->>TR: plan {action, target, confidence}
+            end
+            TR->>RM: execute(plan)
+            alt confidence < threshold or protected namespace
+                RM-->>TR: executed=false
+            else dry_run=true
+                RM-->>TR: executed=true (dry_run)
+            else cordon_node / drain_node
+                RM->>AS: register(action_id) → Event
+                RM->>SL: Slack HITL request + POST /approve/<id>
+                alt operator approves before timeout
+                    OP->>WH: POST /approve/<id>
+                    WH->>AS: approve(action_id)
+                    AS-->>RM: event.set()
+                else APPROVAL_TIMEOUT_SECONDS elapsed
+                    Note over RM: auto-approve
+                end
+                RM->>K: cordon / evict pods (PDB retry 5s→15s→30s)
+                K-->>RM: ok / api error
+                RM-->>TR: executed=true/false
+            else restart_pod / scale_up
+                RM->>K: patch deployment / scale replicas
+                K-->>RM: ok / api error
+                RM-->>TR: executed=true/false
+            end
+            TR->>AU: record(triage, plan, result)
+            AU->>SL: audit notification + CloudWatch metric
+            AU->>MEM: store(incident)
         end
-        TR->>RM: execute(plan)
-        alt safety gate fails (confidence/protected ns)
-            RM-->>TR: executed=false (reason)
-        else dry_run=true
-            RM-->>TR: executed=true (dry_run)
-        else execute
-            RM->>K: patch deployment / scale / cordon node
-            K-->>RM: ok / api error
-            RM-->>TR: executed=true/false
-        end
-        TR->>AU: record(triage, plan, result)
-        AU->>SL: Slack notification + CloudWatch metric
-        AU->>MEM: store(incident)
     end

@@ -9,7 +9,7 @@ flowchart LR
     end
 
     AG -->|diagnose| G[(Gemini 2.5 Flash)]
-    AG -->|optional Slack notify| S[Slack]
+    AG -->|HITL approvals + audit notifications| S[Slack]
     AG -->|audit| CW[CloudWatch Metrics & Logs]
     AG -->|past cases| MEM[(SQLite memory)]
 
