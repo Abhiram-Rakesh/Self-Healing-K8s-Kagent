@@ -1,5 +1,12 @@
 # Self-Healing Kubernetes Cluster with KAgent + Gemini AI
 
+[![CI](https://github.com/Abhiram-Rakesh/Self-Healing-K8s-AI-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhiram-Rakesh/Self-Healing-K8s-AI-Agent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Kubernetes](https://img.shields.io/badge/kubernetes-1.28%2B-326CE5.svg?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![AWS EKS](https://img.shields.io/badge/AWS-EKS-FF9900.svg?logo=amazonaws&logoColor=white)](https://aws.amazon.com/eks/)
+[![Terraform](https://img.shields.io/badge/terraform-1.10%2B-7B42BC.svg?logo=terraform&logoColor=white)](https://www.terraform.io/)
+
 An AI-powered self-healing platform for Amazon EKS. Prometheus alerts are routed
 to a Python agent running KAgent, which calls Gemini 2.5 Flash to diagnose the
 root cause, then executes a safe Kubernetes remediation (restart, scale, cordon,
@@ -240,8 +247,8 @@ for a fresh dev account.
 ### Step 1 — Fork and clone the repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/self-healing-k8s-kagent.git
-cd self-healing-k8s-kagent
+git clone https://github.com/Abhiram-Rakesh/Self-Healing-K8s-AI-Agent.git
+cd Self-Healing-K8s-AI-Agent
 ```
 
 **Success indicator:** `ls` shows `Makefile`, `terraform/`, `agent/`, `helm/`,
