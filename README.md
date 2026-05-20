@@ -1,6 +1,6 @@
 # Self-Healing Kubernetes Cluster with KAgent + Gemini AI
 
-[![CI](https://github.com/Abhiram-Rakesh/Self-Healing-K8s-AI-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhiram-Rakesh/Self-Healing-K8s-AI-Agent/actions/workflows/ci.yml)
+[![CI](https://github.com/Abhiram-Rakesh/Self-Healing-K8s-Kagent/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhiram-Rakesh/Self-Healing-K8s-Kagent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![Kubernetes](https://img.shields.io/badge/kubernetes-1.28%2B-326CE5.svg?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
