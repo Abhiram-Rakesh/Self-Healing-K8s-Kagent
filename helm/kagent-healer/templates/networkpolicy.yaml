@@ -19,9 +19,9 @@ spec:
     - ports:
         - port: {{ .Values.service.webhookPort }}
           protocol: TCP
-    # Prometheus scrape → port 8001
+    # kagent SSE tool calls → MCP port 8080
     - ports:
-        - port: {{ .Values.service.metricsPort }}
+        - port: {{ .Values.service.mcpPort }}
           protocol: TCP
 
   egress:
