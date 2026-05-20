@@ -8,8 +8,8 @@ services:
       DRY_RUN: "true"
       LOG_LEVEL: INFO
     ports:
-      - "8000:8000"   # webhook
-      - "8001:8001"   # metrics
+      - "8000:8000"   # bridge — Alertmanager webhook + /approve/<id>
+      - "8080:8080"   # custom MCP server (SSE) — kagent calls write tools here
     volumes:
       # Mount local kubeconfig for talking to a dev cluster (kind / minikube).
       - ${HOME}/.kube:/home/kagent/.kube:ro
