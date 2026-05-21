@@ -519,11 +519,12 @@ helm install kagent \
   --wait
 ```
 
-Create the Gemini API key secret (referenced by the `ModelConfig` CRD):
+Create (or update) the Gemini API key secret (referenced by the `ModelConfig` CRD):
 ```bash
 kubectl create secret generic kagent-gemini \
   -n kagent \
-  --from-literal GOOGLE_API_KEY="$GEMINI_API_KEY"
+  --from-literal GOOGLE_API_KEY="$GEMINI_API_KEY" \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 Apply the kagent resources (ModelConfig, RemoteMCPServer, Agent CRDs):
