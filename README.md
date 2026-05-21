@@ -24,14 +24,13 @@ flowchart LR
         P[Workload Pods] -->|metrics| PR[Prometheus]
         PR -->|alerts fire| AM[Alertmanager]
         AM -->|webhook POST /webhook| BR[kagent-healer\nBridge :8000]
-        BR -->|A2A tasks/send| KC[kagent Controller\n:8083]
-        KC -->|Gemini tool-calling loop| AG[healer-agent\nAgent CRD]
+        BR -->|A2A message/send| AG[healer-agent\nAgent :8080]
         AG -->|read tools: logs / events / describe| KTS[kagent-tool-server\nBuilt-in K8s MCP]
         AG -->|write tools: restart / scale / cordon / drain| HMS[healer-mcp-server\nCustom MCP :8080]
         KTS --> K8sAPI[Kubernetes API]
         HMS -->|safety-gated writes| K8sAPI
     end
-    KC -->|Gemini 2.5 Flash| G[(Gemini API)]
+    AG -->|Gemini 2.5 Flash| G[(Gemini API)]
     HMS -->|record_outcome: audit + notify| CW[CloudWatch + Slack]
     HMS -->|recall / record_outcome| MEM[(SQLite memory)]
 ```
@@ -779,7 +778,7 @@ and Alertmanager.
 
 | Alert                | PromQL trigger                                                                            | Action         | Confidence needed | What happens                                                                |
 |----------------------|-------------------------------------------------------------------------------------------|----------------|-------------------|-----------------------------------------------------------------------------|
-| `PodCrashLooping`    | `rate(kube_pod_container_status_restarts_total[5m]) * 60 > 0.5` for 1m                    | `restart_deployment`  | ≥ 0.75            | Safety gates (confidence → protected-namespace → dry-run) enforced inside the MCP write tool. Patches the Deployment's `kubectl.kubernetes.io/restartedAt` annotation. |
+| `PodCrashLooping`    | `kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} == 1` for 2m         | `restart_deployment`  | ≥ 0.75            | Safety gates (confidence → protected-namespace → dry-run) enforced inside the MCP write tool. Patches the Deployment's `kubectl.kubernetes.io/restartedAt` annotation. |
 | `PodOOMKilled`       | `kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1`               | `restart_deployment` *or* `scale_deployment` | ≥ 0.75 | If Gemini sees repeated OOMs across replicas, prefers `scale_deployment`. Original replica count is stored and restored automatically when the alert resolves. |
 | `PodPendingTooLong`  | `kube_pod_status_phase{phase="Pending"} == 1` for 5m                                      | `scale_deployment` *or* `notify_only` | ≥ 0.75 | Bumps replicas by 1 up to `MAX_REPLICAS` if cause is taint/resource pressure. Replica count is restored automatically when the alert resolves. |
 | `NodeNotReady`       | `kube_node_status_condition{condition="Ready",status="true"} == 0` for 2m                 | `cordon_node` *or* `drain_node` | ≥ 0.80 + HITL | Posts a Slack message with a `POST /approve/<id>` URL. Agent waits up to `APPROVAL_TIMEOUT_SECONDS` (default 300s) then auto-approves. Drain retries PDB-blocked pods with 5s→15s→30s backoff. |
@@ -809,7 +808,7 @@ the action Gemini suggests (enforced inside each MCP write tool in `agent/mcp_se
 | `MCP_PORT`                | `service.mcpPort`                 | FastMCP SSE port — kagent calls write tools here                        | `8080`                                           | no       |
 | `WEBHOOK_TOKEN`           | `agent.webhookToken`              | If set, `/webhook` requires `Authorization: Bearer <token>`             | `""`                                             | no       |
 | `WEBHOOK_BASE_URL`        | `agent.webhookBaseUrl`            | External base URL for clickable `/approve/<id>` links in Slack messages | `""`                                             | no       |
-| `KAGENT_CONTROLLER_URL`   | `agent.kagentControllerUrl`       | kagent controller A2A endpoint                                          | `http://kagent-controller.kagent.svc…:8083`      | no       |
+| `KAGENT_AGENT_URL`        | `agent.kagentAgentUrl`            | kagent agent A2A endpoint (A2A v0.3.0, direct to agent service)         | `http://healer-agent.kagent.svc…:8080`           | no       |
 | `KAGENT_NAMESPACE`        | `agent.kagentNamespace`           | Namespace where the kagent Agent CRD is deployed                        | `kagent`                                         | no       |
 | `KAGENT_AGENT_NAME`       | `agent.kagentAgentName`           | Name of the kagent `Agent` resource to invoke                           | `healer-agent`                                   | no       |
 | `APPROVAL_TIMEOUT_SECONDS`| —                                 | Seconds to wait for human HITL approval before auto-approving           | `300`                                            | no       |
