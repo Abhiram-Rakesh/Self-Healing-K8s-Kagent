@@ -381,6 +381,16 @@ ip-10-0-1-90.ap-south-1.compute.internal         Ready    <none>   3m    v1.32.0
 
 **Success indicator:** All nodes show `STATUS=Ready` and run version `v1.32.x`.
 
+Then mark `gp2` as the cluster-default StorageClass. EKS provisions `gp2` but does not flag it as default, which breaks any Helm chart that doesn't set an explicit `storageClassName` (Loki, Litmus MongoDB, etc.):
+
+```bash
+kubectl patch storageclass gp2 \
+  -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+
+kubectl get storageclass
+# Expected: NAME  gp2 (default)
+```
+
 ### Step 5 — Install cluster add-ons
 
 #### 5a — Metrics Server
