@@ -995,7 +995,7 @@ This starts six tunnels simultaneously:
 | Prometheus | `http://localhost:9090` | — |
 | Alertmanager | `http://localhost:9093` | — |
 | Loki (LogQL API) | `http://localhost:3100` | — |
-| KAgent UI | `http://localhost:8080` | — |
+| KAgent UI | `http://localhost:8083` | — |
 | Healer webhook | `http://localhost:8000/health` | — |
 
 Press `Ctrl-C` to stop all tunnels. Logs for each forward are written to

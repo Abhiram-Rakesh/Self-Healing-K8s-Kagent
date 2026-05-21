@@ -43,8 +43,8 @@ start_pf grafana       monitoring monitoring-grafana                          30
 start_pf prometheus    monitoring monitoring-kube-prometheus-prometheus       9090  9090
 start_pf alertmanager  monitoring monitoring-kube-prometheus-alertmanager     9093  9093
 start_pf loki          monitoring loki                                        3100  3100
-start_pf kagent-ui     kagent     kagent-ui                                   8080  80
-start_pf healer        kagent     kagent-healer                               8000  8000
+start_pf kagent-ui     kagent     kagent-ui                                   8083  8080
+start_pf healer        default    kagent-healer                               8000  8000
 
 ok "All available port-forwards started. Logs: $LOG_DIR"
 ok "Press Ctrl-C to stop."
