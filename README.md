@@ -421,6 +421,7 @@ helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
   --set grafana.adminPassword='admin' \
   --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
   --set prometheus.prometheusSpec.ruleSelectorNilUsesHelmValues=false \
+  --set alertmanager.alertmanagerSpec.alertmanagerConfigMatcherStrategy.type=None \
   --wait
 ```
 
