@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-**Self-Healing Kubernetes Cluster with KAgent + Gemini AI** is an AI-powered self-healing platform for Amazon EKS. It integrates:
-- **kagent framework** (CNCF sandbox) — manages Agent CRD and Gemini 2.5 Flash tool-calling loop
+**Self-Healing Kubernetes Cluster with KAgent** is an AI-powered self-healing platform for Amazon EKS. It integrates:
+- **kagent framework** (CNCF sandbox) — manages Agent CRD and LLM tool-calling loop (default: Claude Haiku; switchable via `ModelConfig` CRD)
 - **Prometheus + Alertmanager** — fires alerts on cluster health anomalies
 - **Thin bridge** (Python, :8000) — receives Alertmanager webhooks, deduplicates, forwards to kagent
 - **Custom MCP server** (Python 3.11 + FastMCP, :8080) — exposes safety-gated write tools and incident memory
@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 Prometheus → Alertmanager → Bridge (:8000) → kagent Agent (A2A v0.3.0)
                                                     ↓
-                                            Gemini 2.5 Flash (tool-calling loop)
+                                            Claude / Gemini LLM (tool-calling loop)
                                                     ↓
                                     ┌───────────────┴───────────────┐
                                     ↓                               ↓
@@ -34,7 +34,7 @@ Prometheus → Alertmanager → Bridge (:8000) → kagent Agent (A2A v0.3.0)
 **Bridge** (`agent/bridge.py`):
 - Listens on `:8000` for Alertmanager webhook POSTs
 - Deduplicates alerts within `DEDUP_TTL_SECONDS` (default 300s)
-- Enforces daily budget via `CostGuard` (limits Gemini calls per UTC day)
+- Enforces daily budget via `CostGuard` (limits LLM calls forwarded per UTC day)
 - Forwards firing alerts to kagent Agent via A2A v0.3.0 (JSON-RPC 2.0, message/send)
 - Exposes `POST /approve/<action_id>` for HITL approval of cordon/drain actions
 - Health endpoints: `/health`, `/healthz`, `/readyz`
@@ -131,7 +131,7 @@ For full deployment instructions, see `README.md` Steps 1–10 (prerequisites, T
 | `DRY_RUN` | `true` | Helm/env | Log actions but don't execute (safety default) |
 | `CONFIDENCE_THRESHOLD` | `0.75` | Helm/env | Min confidence for write tools |
 | `MAX_REPLICAS` | `10` | Helm/env | Hard cap for `scale_deployment` |
-| `DAILY_REQUEST_LIMIT` | `200` | Helm/env | Daily Gemini call budget |
+| `DAILY_REQUEST_LIMIT` | `200` | Helm/env | Daily LLM call budget (alerts forwarded per UTC day) |
 | `MEMORY_DB_PATH` | `/tmp/kagent-memory.db` | Helm/env | SQLite incident store |
 | `AUDIT_LOG_PATH` | `/tmp/kagent-audit.jsonl` | Helm/env | JSONL audit log |
 | `LOG_LEVEL` | `INFO` | Helm/env | Python log level |
@@ -158,7 +158,7 @@ Production overlay: `helm/kagent-healer/values-prod.yaml` (persistence, HPA, PDB
 | `NodeNotReady` | `kube_node_status_condition{condition="Ready",status="true"} == 0` for 2m | `cordon_node` or `drain_node` | ≥0.80 + HITL | confidence, HITL approval, dry-run |
 | `PVCUsageHigh` | `kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 0.85` for 5m | `notify_only` | n/a | human decision only |
 
-All confidence values < 0.70 force `notify_only` regardless of Gemini's suggestion (enforced server-side in write tools).
+All confidence values < 0.70 force `notify_only` regardless of the LLM's suggestion (enforced server-side in write tools).
 
 ## Tests
 
@@ -167,7 +167,7 @@ Unit tests live in `agent/tests/`:
 - `test_mcp_server.py` — write tools, safety gates, SQLite memory, scale tracking
 - `conftest.py` — shared fixtures (mock K8s clients, temp DB paths)
 
-Tests use `unittest.mock` to stub K8s client, boto3, requests, and SQLite. No live cluster or Gemini key required.
+Tests use `unittest.mock` to stub K8s client, boto3, requests, and SQLite. No live cluster or LLM API key required.
 
 ## Code Style
 
@@ -238,24 +238,24 @@ All four must pass CI. Run `make lint` and `make test` before pushing.
 - Verify bridge is receiving webhooks: `kubectl logs -n kagent ... | grep "Forwarded"`
 - Check confidence threshold: `kubectl logs -n kagent ... | grep "below threshold"`
 
-**Gemini returns low confidence repeatedly**:
+**Agent returns low confidence repeatedly**:
 - Agent tools may be running too late (pod already deleted)
 - Increase alert `for:` duration in alert-rules.yaml so pod survives investigation
 - Verify tool output: `kubectl logs -n kagent -l app.kubernetes.io/name=kagent -f | grep -i "tool"`
 
-**Gemini API key invalid**:
+**LLM API key invalid**:
 - Error appears in kagent **controller** logs, not healer pod
-- Verify key: `curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY" | jq '.error // .models[0].name'`
-- Update K8s secret: `kubectl create secret generic kagent-gemini -n kagent --from-literal GOOGLE_API_KEY="new-key" --dry-run=client -o yaml | kubectl apply -f -`
+- Anthropic: `kubectl create secret generic kagent-anthropic -n kagent --from-literal ANTHROPIC_API_KEY="new-key" --dry-run=client -o yaml | kubectl apply -f -`
+- Gemini: `kubectl create secret generic kagent-gemini -n kagent --from-literal GOOGLE_API_KEY="new-key" --dry-run=client -o yaml | kubectl apply -f -`
 - Restart controller: `kubectl rollout restart deployment/kagent -n kagent`
 
 ## Observability
 
 - **Agent metrics** (request count, tool latency, token usage): kubectl metrics on kagent controller; UI at `:8083`
-- **Logs** (bridge + MCP server): `kubectl logs -n kagent -l app.kubernetes.io/name=kagent-healer -f`
+- **Logs** (bridge + MCP server): `kubectl logs -n default -l app.kubernetes.io/name=kagent-healer -f`
 - **Structured logs** (Loki): Grafana → Explore → Loki → `{app="kagent-healer"}`
 - **Dashboard** (pre-built): Grafana → auto-provisioned from ConfigMap at `k8s/monitoring/grafana-dashboard-configmap.yaml`
-- **Audit log** (incident history): `kubectl exec -n kagent <pod> -- cat /data/kagent-audit.jsonl | jq`
+- **Audit log** (incident history): `kubectl exec -n default <kagent-healer-pod> -- cat /data/kagent-audit.jsonl | jq`
 
 ## CI/CD
 

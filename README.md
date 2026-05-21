@@ -764,7 +764,7 @@ kubectl get pods -n default -w
 Wait until the pod shows `CrashLoopBackOff`. In another terminal, tail the
 agent logs:
 ```bash
-kubectl logs -n kagent -l app.kubernetes.io/name=kagent-healer -f
+kubectl logs -n default -l app.kubernetes.io/name=kagent-healer -f
 ```
 
 Expected log lines (bridge + kagent controller + healer MCP server):
@@ -942,11 +942,11 @@ To enable live healing:
 
 ```bash
 helm upgrade --install kagent-healer helm/kagent-healer/ \
-  --namespace kagent \
+  --namespace default \
   --reuse-values \
   --set agent.dryRun="false"
 
-kubectl rollout status deploy/kagent-healer -n kagent
+kubectl rollout status deploy/kagent-healer -n default
 ```
 
 To confirm it took effect, inject a crash-loop and watch:
@@ -1011,7 +1011,7 @@ To approve explicitly, `POST` to the `/approve/<action_id>` endpoint printed in
 the Slack message. Via port-forward:
 
 ```bash
-kubectl -n kagent port-forward svc/kagent-healer 8000:8000 &
+kubectl -n default port-forward svc/kagent-healer 8000:8000 &
 sleep 2
 curl -X POST http://localhost:8000/approve/<action_id>
 # {"approved":"<action_id>"}
@@ -1023,21 +1023,21 @@ so you can approve directly from Slack without a port-forward.
 
 To list pending approvals (check agent logs for `action_id=` lines):
 ```bash
-kubectl logs -n kagent -l app.kubernetes.io/name=kagent-healer --tail=50 \
+kubectl logs -n default -l app.kubernetes.io/name=kagent-healer --tail=50 \
   | grep "Awaiting approval"
 ```
 
 ### View agent logs
 
 ```bash
-kubectl logs -n kagent -l app.kubernetes.io/name=kagent-healer --tail=200 -f
+kubectl logs -n default -l app.kubernetes.io/name=kagent-healer --tail=200 -f
 ```
 
 ### Check the audit log
 
 ```bash
-POD=$(kubectl get pod -n kagent -l app.kubernetes.io/name=kagent-healer -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n kagent "$POD" -- cat /data/kagent-audit.jsonl | jq -r '.'
+POD=$(kubectl get pod -n default -l app.kubernetes.io/name=kagent-healer -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n default "$POD" -- cat /data/kagent-audit.jsonl | jq -r '.'
 ```
 
 > **Note:** With `persistence.enabled=true` (the production default), the audit
@@ -1049,7 +1049,7 @@ kubectl exec -n kagent "$POD" -- cat /data/kagent-audit.jsonl | jq -r '.'
 
 ```bash
 kubectl apply -f k8s/test-workloads/crash-loop.yaml
-kubectl logs -n kagent -l app.kubernetes.io/name=kagent-healer -f
+kubectl logs -n default -l app.kubernetes.io/name=kagent-healer -f
 # When you see the audit entry:
 kubectl delete -f k8s/test-workloads/crash-loop.yaml
 ```
@@ -1057,8 +1057,8 @@ kubectl delete -f k8s/test-workloads/crash-loop.yaml
 ### Rolling restart the agent
 
 ```bash
-kubectl rollout restart deployment/kagent-healer -n kagent
-kubectl rollout status deployment/kagent-healer -n kagent
+kubectl rollout restart deployment/kagent-healer -n default
+kubectl rollout status deployment/kagent-healer -n default
 ```
 
 ### Switch LLM provider
@@ -1136,8 +1136,8 @@ kagent-healer-6d8f9b7c4-xk2pv     0/1     CrashLoopBackOff   4          2m
 
 Diagnosis:
 ```bash
-kubectl describe pod -n kagent kagent-healer-6d8f9b7c4-xk2pv
-kubectl logs -n kagent kagent-healer-6d8f9b7c4-xk2pv --previous
+kubectl describe pod -n default kagent-healer-6d8f9b7c4-xk2pv
+kubectl logs -n default kagent-healer-6d8f9b7c4-xk2pv --previous
 ```
 
 Most common cause is a Secrets Manager access failure — the healer pod loads

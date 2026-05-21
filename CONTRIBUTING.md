@@ -46,15 +46,16 @@ make test
 pytest agent/tests/ -v --cov=agent --cov-report=term-missing
 ```
 
-Tests must not require a live Kubernetes cluster or a real Gemini API key —
+Tests must not require a live Kubernetes cluster or a real LLM API key —
 mock everything at the boundary.
 
 ## Adding a new healing action
 
-**Architecture summary:** The Gemini tool-calling loop is managed entirely by
-kagent. Read tools (logs, events, describe) come from `kagent-tool-server`
-(built-in). Write tools (restart, scale, cordon, drain) live in
-`agent/mcp_server.py` and are exposed as SSE MCP tools that kagent calls.
+**Architecture summary:** The LLM tool-calling loop is managed entirely by
+kagent (default provider: Claude Haiku; change `spec.declarative.modelConfig`
+in `agent.yaml` to switch). Read tools (logs, events, describe) come from
+`kagent-tool-server` (built-in). Write tools (restart, scale, cordon, drain)
+live in `agent/mcp_server.py` and are exposed as SSE MCP tools that kagent calls.
 The system prompt lives in `k8s/kagent/agent.yaml`, not in code.
 
 1. **Add the tool function** to `agent/mcp_server.py`. Write tools must enforce
@@ -77,15 +78,16 @@ The system prompt lives in `k8s/kagent/agent.yaml`, not in code.
    `_scale_state[alert_key]` so `scale_down_if_resolved()` can restore it when
    the alert resolves. See `scale_deployment` for the pattern.
 4. **Expose the tool in the Agent CRD** by adding its name to the
-   `healer-mcp-server` tool list in `k8s/kagent/agent.yaml`:
+   `healer-mcp-server` tool list in `k8s/kagent/agent.yaml`. FastMCP registers
+   tools with an `_mcp_` prefix, so the name in `toolNames` must match:
    ```yaml
    - type: McpServer
      mcpServer:
        name: healer-mcp-server
-       toolNames: [..., my_action]
+       toolNames: [..., _mcp_my_action]
    ```
    After applying (`kubectl apply -f k8s/kagent/agent.yaml`), kagent will
-   automatically include the new tool in Gemini's tool schema.
+   automatically include the new tool in the LLM's tool schema.
 5. **Update the system prompt** in `k8s/kagent/agent.yaml`
    (`spec.declarative.systemMessage`) to tell the agent when and how to use
    the new tool.
