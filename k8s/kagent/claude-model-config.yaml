@@ -1,0 +1,24 @@
+# Claude ModelConfig — switch healer-agent to Anthropic Claude.
+#
+# Prerequisites:
+#   kubectl create secret generic kagent-anthropic \
+#     -n kagent \
+#     --from-literal ANTHROPIC_API_KEY=<your-anthropic-api-key>
+#
+# Then point the agent at this config:
+#   Edit k8s/kagent/agent.yaml: spec.declarative.modelConfig: claude-model-config
+#   kubectl apply -f k8s/kagent/agent.yaml
+#
+# Apply: kubectl apply -f k8s/kagent/claude-model-config.yaml
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: claude-model-config
+  namespace: kagent
+spec:
+  provider: Anthropic
+  model: claude-haiku-4-5-20251001
+  apiKeySecret: kagent-anthropic
+  apiKeySecretKey: ANTHROPIC_API_KEY
+  anthropic:
+    maxTokens: 8096

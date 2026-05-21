@@ -1,4 +1,4 @@
-# Self-Healing Kubernetes Cluster with KAgent + Gemini AI
+# Self-Healing Kubernetes Cluster with KAgent
 
 [![CI](https://github.com/Abhiram-Rakesh/Self-Healing-K8s-Kagent/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhiram-Rakesh/Self-Healing-K8s-Kagent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -9,10 +9,15 @@
 
 An AI-powered self-healing platform for Amazon EKS built on the
 [kagent](https://kagent.dev) framework. Prometheus alerts are routed to a thin
-bridge that forwards them to a kagent-managed Gemini 2.5 Flash agent. The agent
+bridge that forwards them to a kagent-managed AI agent. The agent
 investigates using kagent's built-in Kubernetes MCP tools, then executes
 remediation (restart, scale, cordon, or drain) through a custom safety-gated MCP
 server behind a confidence threshold and a dry-run gate.
+
+The LLM provider is **pluggable** — switch between Anthropic Claude, Google
+Gemini, OpenAI, Ollama, and others by changing one field in the `ModelConfig`
+CRD. The default configuration uses **Claude Haiku** (fast, cost-effective); a
+`gemini-model-config.yaml` is also provided for easy rollback.
 
 ---
 
@@ -30,7 +35,7 @@ flowchart LR
         KTS --> K8sAPI[Kubernetes API]
         HMS -->|safety-gated writes| K8sAPI
     end
-    AG -->|Gemini 2.5 Flash| G[(Gemini API)]
+    AG -->|Claude / Gemini / OpenAI| G[(LLM API)]
     HMS -->|record_outcome: audit + notify| CW[CloudWatch + Slack]
     HMS -->|recall / record_outcome| MEM[(SQLite memory)]
 ```
@@ -45,8 +50,8 @@ flowchart LR
 | IaC              | Terraform 1.10+, S3 native locking  | Reproducible cluster provisioning (no DynamoDB needed)     |
 | Observability    | kube-prometheus-stack, Loki, Grafana | Metrics, logs, alerting, dashboards                       |
 | Chaos            | Litmus ChaosCenter               | Repeatable failure injection                                  |
-| AI               | Google Gemini 2.5 Flash          | LLM — driven by kagent's tool-calling loop                    |
-| Agent framework  | [kagent](https://kagent.dev) (CNCF sandbox) | Manages Agent CRD, Gemini loop, built-in K8s MCP tools |
+| AI               | Anthropic Claude / Google Gemini (pluggable) | LLM — driven by kagent's tool-calling loop; default: Claude Haiku |
+| Agent framework  | [kagent](https://kagent.dev) (CNCF sandbox) | Manages Agent CRD, LLM loop, built-in K8s MCP tools |
 | Custom MCP server| Python 3.11 + FastMCP            | Safety-gated write tools, HITL approval, SQLite memory        |
 | Bridge           | Python 3.11 (stdlib HTTP server) | Thin Alertmanager→kagent forwarder with dedup                 |
 | Memory           | SQLite (stdlib)                  | Past incident store — no external DB needed                   |
@@ -198,7 +203,26 @@ This message shows that your installation appears to be working correctly.
 
 **Success indicator:** The Docker daemon prints the "Hello from Docker!" message.
 
-### 6. Google Gemini API key
+### 6. LLM API key (Anthropic or Gemini)
+
+The agent is LLM-agnostic — pick whichever provider you have a key for. Both
+`ModelConfig` files are included; you only need to apply the one you use.
+
+**Option A — Anthropic Claude (default)**
+
+Get a key at https://console.anthropic.com → **API Keys**.
+
+Verify:
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+curl -s https://api.anthropic.com/v1/models \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" | jq '.data[0].id'
+```
+
+Expected output: `"claude-haiku-4-5-20251001"` (or similar).
+
+**Option B — Google Gemini**
 
 Generate a free key at https://aistudio.google.com → **Get API key**.
 
@@ -209,10 +233,7 @@ curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_AP
   | jq '.models[0].name'
 ```
 
-Expected output:
-```
-"models/gemini-2.5-flash"
-```
+Expected output: `"models/gemini-2.5-flash"`
 
 **Success indicator:** A model name string is returned (no `error:` block).
 
@@ -239,7 +260,7 @@ policies (or an equivalent custom policy):
 | `AmazonEKSClusterPolicy` (attach to role created by TF) | Standard EKS control-plane permissions      |
 | `IAMFullAccess`                       | Create the cluster, node, and IRSA roles + policies              |
 | `AmazonEC2ContainerRegistryFullAccess`| Create + push to the `kagent-healer` ECR repository              |
-| `SecretsManagerReadWrite`             | Push the Gemini API key + Slack webhook to Secrets Manager       |
+| `SecretsManagerReadWrite`             | Push the LLM API key + Slack webhook to Secrets Manager          |
 | `AmazonS3FullAccess`                  | Terraform state bucket access                                    |
 | `CloudWatchLogsFullAccess`            | Cluster log groups                                               |
 
@@ -319,7 +340,7 @@ Open `terraform/terraform.tfvars` and set these values:
 | `workload_node_count`| `2`                                      | Two = the minimum for HPA experiments                    |
 | `enable_ha_nat`      | `false`                                  | `true` = one NAT GW per AZ (~3x the cost)                |
 | `state_bucket`       | `my-name-tf-state-123456789012`          | The bucket you created in Step 2                         |
-| `gemini_api_key`     | from https://aistudio.google.com         | Stored in Secrets Manager — never hardcoded in code      |
+| `gemini_api_key`     | from https://aistudio.google.com         | Optional — only if using Gemini provider; stored in Secrets Manager |
 | `slack_webhook_url`  | optional `https://hooks.slack.com/...`   | Leave empty to disable Slack notifications               |
 
 Initialize, plan, apply:
@@ -515,7 +536,7 @@ kubectl api-resources | grep litmuschaos   # should show chaosengines, chaosexpe
 
 #### 5e — kagent framework
 
-kagent is the AI agent framework that manages the Gemini tool-calling loop, the
+kagent is the AI agent framework that manages the LLM tool-calling loop, the
 Agent CRD, and the built-in Kubernetes MCP tools.
 
 ```bash
@@ -525,16 +546,24 @@ helm install kagent-crds \
   --namespace kagent --create-namespace
 sleep 15
 
-# Install kagent with Gemini as the default provider
+# Install kagent (provider-agnostic — LLM is set via ModelConfig CRD, not here)
 helm install kagent \
   oci://ghcr.io/kagent-dev/kagent/helm/kagent \
   --namespace kagent \
-  --set providers.default=gemini \
-  --set providers.gemini.apiKey="$GEMINI_API_KEY" \
   --wait
 ```
 
-Create (or update) the Gemini API key secret (referenced by the `ModelConfig` CRD):
+Create the LLM API key secret for whichever provider you chose in Step 6:
+
+**Anthropic (default):**
+```bash
+kubectl create secret generic kagent-anthropic \
+  -n kagent \
+  --from-literal ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+**Gemini (alternative):**
 ```bash
 kubectl create secret generic kagent-gemini \
   -n kagent \
@@ -557,17 +586,11 @@ kubectl get pods -n kagent
 
 ### Step 6 — Push secrets to AWS Secrets Manager
 
-> Terraform already wrote your Gemini key (and optional Slack webhook) to
-> Secrets Manager in Step 3. This step is the **rotation** procedure —
-> use it whenever you regenerate a key.
+The Slack webhook URL (optional) goes through Secrets Manager so it's never in
+code. The LLM API key is stored directly in a K8s Secret in the `kagent`
+namespace (referenced by the `ModelConfig` CRD) — see Step 5e above.
 
 ```bash
-export GEMINI_API_KEY="your-new-key"
-aws secretsmanager put-secret-value \
-  --secret-id kagent/gemini-api-key \
-  --secret-string "$GEMINI_API_KEY" \
-  --region "$AWS_REGION"
-
 # (optional) Slack webhook
 aws secretsmanager put-secret-value \
   --secret-id kagent/slack-webhook \
@@ -575,20 +598,10 @@ aws secretsmanager put-secret-value \
   --region "$AWS_REGION"
 ```
 
-Expected output:
-```
-{
-    "ARN": "arn:aws:secretsmanager:ap-south-1:123456789012:secret:kagent/gemini-api-key-AbCdEf",
-    "Name": "kagent/gemini-api-key",
-    "VersionId": "...",
-    "VersionStages": ["AWSCURRENT"]
-}
-```
-
 Verify:
 ```bash
 aws secretsmanager get-secret-value \
-  --secret-id kagent/gemini-api-key \
+  --secret-id kagent/slack-webhook \
   --region "$AWS_REGION" \
   --query SecretString --output text | head -c 8 ; echo
 ```
@@ -706,12 +719,18 @@ Once the healer service is up, apply the kagent resource definitions. The
 `RemoteMCPServer` URL must resolve, so this step comes after 9a.
 
 ```bash
-kubectl apply -f k8s/kagent/model-config.yaml
+# Apply the ModelConfig for your chosen LLM (apply both to keep rollback easy):
+kubectl apply -f k8s/kagent/claude-model-config.yaml   # Anthropic Claude (default)
+kubectl apply -f k8s/kagent/model-config.yaml           # Gemini (alternative)
+
 kubectl apply -f k8s/kagent/remote-mcp-server.yaml
 # Apply the ConfigMap BEFORE the Agent CRD (the Agent CRD mounts it)
 kubectl apply -f k8s/kagent/agent-patch-configmap.yaml
 kubectl apply -f k8s/kagent/agent.yaml
 ```
+
+`agent.yaml` points to `claude-model-config` by default. To switch providers,
+edit `spec.declarative.modelConfig` in `agent.yaml` and re-apply.
 
 Verify:
 ```bash
@@ -720,8 +739,9 @@ kubectl get modelconfig,remotemcpserver,agent -n kagent
 
 Expected output:
 ```
-NAME                                         AGE
-modelconfig.kagent.dev/gemini-model-config   10s
+NAME                                          AGE
+modelconfig.kagent.dev/claude-model-config    10s
+modelconfig.kagent.dev/gemini-model-config    10s
 
 NAME                                              AGE
 remotemcpserver.kagent.dev/kagent-tool-server     5m
@@ -787,8 +807,8 @@ you're watching on screen:
 3. **Alert firing** — waits up to 3 minutes (animated spinner) for Prometheus
    to fire the `PodCrashLooping` alert and Alertmanager to deliver it to the
    agent.
-4. **Gemini diagnosis** — tails the agent log until you see
-   `Gemini diagnosis: action=...` with a real confidence score.
+4. **LLM diagnosis** — tails the agent log until you see
+   `diagnosis: action=...` with a real confidence score.
 5. **Healing action** — the `restart_deployment` action is logged (dry-run by default).
 6. **OOM injection** — applies `oom-test.yaml`, which immediately exceeds its
    64Mi memory limit and is OOMKilled.
@@ -808,13 +828,13 @@ and Alertmanager.
 | Alert                | PromQL trigger                                                                            | Action         | Confidence needed | What happens                                                                |
 |----------------------|-------------------------------------------------------------------------------------------|----------------|-------------------|-----------------------------------------------------------------------------|
 | `PodCrashLooping`    | `kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} == 1` for 2m         | `restart_deployment`  | ≥ 0.75            | Safety gates (confidence → protected-namespace → dry-run) enforced inside the MCP write tool. Patches the Deployment's `kubectl.kubernetes.io/restartedAt` annotation. |
-| `PodOOMKilled`       | `kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1`               | `restart_deployment` *or* `scale_deployment` | ≥ 0.75 | If Gemini sees repeated OOMs across replicas, prefers `scale_deployment`. Original replica count is stored and restored automatically when the alert resolves. |
+| `PodOOMKilled`       | `kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1`               | `restart_deployment` *or* `scale_deployment` | ≥ 0.75 | If the agent sees repeated OOMs across replicas, prefers `scale_deployment`. Original replica count is stored and restored automatically when the alert resolves. |
 | `PodPendingTooLong`  | `kube_pod_status_phase{phase="Pending"} == 1` for 5m                                      | `scale_deployment` *or* `notify_only` | ≥ 0.75 | Bumps replicas by 1 up to `MAX_REPLICAS` if cause is taint/resource pressure. Replica count is restored automatically when the alert resolves. |
 | `NodeNotReady`       | `kube_node_status_condition{condition="Ready",status="true"} == 0` for 2m                 | `cordon_node` *or* `drain_node` | ≥ 0.80 + HITL | Posts a Slack message with a `POST /approve/<id>` URL. Agent waits up to `APPROVAL_TIMEOUT_SECONDS` (default 300s) then auto-approves. Drain retries PDB-blocked pods with 5s→15s→30s backoff. |
 | `PVCUsageHigh`       | `kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 0.85` for 5m     | `notify_only`  | n/a               | Storage growth is a human decision — agent never resizes PVCs               |
 
 All confidence values below `0.70` are forced to `notify_only` regardless of
-the action Gemini suggests (enforced inside each MCP write tool in `agent/mcp_server.py`).
+the LLM's suggestion (enforced inside each MCP write tool in `agent/mcp_server.py`).
 
 ---
 
@@ -842,14 +862,19 @@ the action Gemini suggests (enforced inside each MCP write tool in `agent/mcp_se
 | `KAGENT_AGENT_NAME`       | `agent.kagentAgentName`           | Name of the kagent `Agent` resource to invoke                           | `healer-agent`                                   | no       |
 | `APPROVAL_TIMEOUT_SECONDS`| —                                 | Seconds to wait for human HITL approval before auto-approving           | `300`                                            | no       |
 
-**kagent ModelConfig** (`k8s/kagent/model-config.yaml`) — controls the LLM kagent uses:
+**kagent ModelConfig** — controls the LLM kagent uses. Two configs are provided; the active one is set by `spec.declarative.modelConfig` in `agent.yaml`.
 
-| Field                | Value             | Notes                                       |
-|----------------------|-------------------|---------------------------------------------|
-| `spec.provider`      | `Gemini`          | Google Gemini via direct API (not Vertex)   |
-| `spec.model`         | `gemini-2.5-flash`| Change to `gemini-2.5-pro` for more capable |
-| `spec.apiKeySecret`  | `kagent-gemini`   | K8s secret in `kagent` namespace            |
-| `spec.apiKeySecretKey`| `GOOGLE_API_KEY` | Key inside the secret                       |
+| File | Provider | Model | Secret | Key field |
+|------|----------|-------|--------|-----------|
+| `claude-model-config.yaml` (default) | `Anthropic` | `claude-haiku-4-5-20251001` | `kagent-anthropic` | `ANTHROPIC_API_KEY` |
+| `model-config.yaml` | `Gemini` | `gemini-2.5-flash` | `kagent-gemini` | `GOOGLE_API_KEY` |
+
+To switch providers: edit `spec.declarative.modelConfig` in `k8s/kagent/agent.yaml`
+(`claude-model-config` → `gemini-model-config` or vice versa), then `kubectl apply -f k8s/kagent/agent.yaml`.
+
+kagent natively supports `Anthropic`, `OpenAI`, `AzureOpenAI`, `Ollama`, `Gemini`,
+`GeminiVertexAI`, `AnthropicVertexAI`, `Bedrock` — see the `ModelConfig` CRD schema
+for all provider-specific fields.
 
 ---
 
@@ -946,7 +971,7 @@ a couple of minutes (the agent patches it to trigger a rollout).
 | NAT Gateway (×1, `enable_ha_nat = false`)   | $0.045                               | ~$33 / mo                    | Plus per-GB data charges (small for this repo) |
 | ECR storage                                 | ~negligible                          | ~$1 / mo                     | Lifecycle keeps last 10 images                 |
 | AWS Secrets Manager (2 secrets)             | $0.001                               | ~$0.80 / mo                  | $0.40 per secret per month                     |
-| Gemini API                                  | $0                                   | $0                           | Free tier covers this workload                 |
+| LLM API (Anthropic / Gemini)                | $0–$0.01                             | $1–5 / mo                    | Claude Haiku / Gemini Flash are very low-cost for alert volumes |
 | **Total**                                   | **~$0.39 / hr (~$4–6 per session)**  | **~$285 / mo always-on**     | See Teardown below to stop billing             |
 
 When you're done for the day, run `./scripts/teardown.sh` — see the
@@ -1036,16 +1061,56 @@ kubectl rollout restart deployment/kagent-healer -n kagent
 kubectl rollout status deployment/kagent-healer -n kagent
 ```
 
+### Switch LLM provider
+
+The active provider is controlled by `spec.declarative.modelConfig` in `k8s/kagent/agent.yaml`.
+Both `claude-model-config` and `gemini-model-config` are applied; only the referenced one is used.
+
+**Switch to Gemini:**
+```bash
+# Ensure the Gemini secret exists
+kubectl create secret generic kagent-gemini \
+  -n kagent --from-literal GOOGLE_API_KEY="$GEMINI_API_KEY" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Edit agent.yaml: set modelConfig: gemini-model-config
+kubectl apply -f k8s/kagent/agent.yaml
+kubectl rollout restart deployment/healer-agent -n kagent  # if controller doesn't auto-reconcile
+```
+
+**Switch back to Anthropic:**
+```bash
+# Ensure the Anthropic secret exists
+kubectl create secret generic kagent-anthropic \
+  -n kagent --from-literal ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Edit agent.yaml: set modelConfig: claude-model-config
+kubectl apply -f k8s/kagent/agent.yaml
+```
+
+### Rotate the Anthropic API key
+
+```bash
+kubectl create secret generic kagent-anthropic \
+  -n kagent \
+  --from-literal ANTHROPIC_API_KEY="new-key" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Restart kagent controller to pick up the new secret
+kubectl rollout restart deployment/kagent -n kagent
+```
+
 ### Rotate the Gemini API key
 
 ```bash
-aws secretsmanager put-secret-value \
-  --secret-id kagent/gemini-api-key \
-  --secret-string "new-gemini-key" \
-  --region ap-south-1
+kubectl create secret generic kagent-gemini \
+  -n kagent \
+  --from-literal GOOGLE_API_KEY="new-gemini-key" \
+  --dry-run=client -o yaml | kubectl apply -f -
 
-# Force the pod to re-read the secret (it's read on startup).
-kubectl rollout restart deployment/kagent-healer -n kagent
+# Restart kagent controller to pick up the new secret
+kubectl rollout restart deployment/kagent -n kagent
 ```
 
 ### Update the agent image to a new SHA
@@ -1091,8 +1156,8 @@ aws secretsmanager get-secret-value --secret-id kagent/slack-webhook --region ap
 # The pod still starts even when the secret is missing — check exact error in logs above.
 ```
 
-> **Note:** The Gemini API key is managed entirely by kagent (via the `ModelConfig`
-> CRD and the `kagent-gemini` K8s secret). A bad Gemini key causes errors in the
+> **Note:** The LLM API key is managed entirely by kagent (via the `ModelConfig`
+> CRD and the corresponding K8s secret). A bad API key causes errors in the
 > kagent controller logs, not in the healer pod.
 
 **Success indicator:** `kubectl get pods -n kagent` shows `1/1 Running`.
@@ -1116,7 +1181,7 @@ prometheus-stack release was installed with
 `alertmanagerConfigSelector` matching your namespace, or set
 `alertmanagerConfigSelectorNilUsesHelmValues=false`.
 
-### 3. Gemini returns low confidence (below 0.75) repeatedly
+### 3. Agent returns low confidence (below 0.75) repeatedly
 
 Symptom: Agent logs show `action=notify_only` over and over.
 
@@ -1179,22 +1244,38 @@ Likely cause #2: confidence is below threshold — check the log line
 Likely cause #3: the daily budget is exhausted — log line
 `CostGuard: daily limit reached`.
 
-### 7. Gemini API key is invalid
+### 7. LLM API key is invalid
 
-Symptom: kagent controller log shows
-`Error calling Gemini API: 400 INVALID_ARGUMENT API key not valid`.
+Symptom: kagent controller log shows an auth error (`401`, `403`, `INVALID_ARGUMENT API key not valid`).
 The error appears in the **kagent namespace**, not in the healer pod.
 
 ```bash
-# Check kagent controller logs for Gemini errors
-kubectl logs -n kagent -l app.kubernetes.io/name=kagent --tail=100 | grep -i "gemini\|error"
+# Check kagent controller logs for LLM errors
+kubectl logs -n kagent -l app.kubernetes.io/name=kagent --tail=100 | grep -i "error\|invalid\|auth"
+
+# Confirm which ModelConfig is active
+kubectl get agent healer-agent -n kagent -o jsonpath='{.spec.declarative.modelConfig}'
 ```
 
-Fix: the Gemini key is stored in the `kagent-gemini` K8s secret in the `kagent`
-namespace (referenced by the `ModelConfig` CRD). Rotate it there:
-
+**Anthropic:**
 ```bash
-# Verify the key by hand
+# Verify the key
+curl -s https://api.anthropic.com/v1/models \
+  -H "x-api-key: YOUR_KEY" \
+  -H "anthropic-version: 2023-06-01" | jq '.data[0].id // .error'
+
+# Update the K8s secret
+kubectl create secret generic kagent-anthropic \
+  -n kagent \
+  --from-literal ANTHROPIC_API_KEY="new-valid-key" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl rollout restart deployment/kagent -n kagent
+```
+
+**Gemini:**
+```bash
+# Verify the key
 curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_KEY" \
   | jq '.error // .models[0].name'
 
@@ -1204,7 +1285,6 @@ kubectl create secret generic kagent-gemini \
   --from-literal GOOGLE_API_KEY="new-valid-key" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Restart kagent controller to pick up the new secret
 kubectl rollout restart deployment/kagent -n kagent
 ```
 

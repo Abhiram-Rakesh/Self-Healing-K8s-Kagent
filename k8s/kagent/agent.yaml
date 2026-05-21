@@ -14,7 +14,7 @@ spec:
   description: "AI-powered Kubernetes self-healing agent — investigates Prometheus alerts and takes safe, targeted remediation actions."
   type: Declarative
   declarative:
-    modelConfig: gemini-model-config
+    modelConfig: claude-model-config   # switch to gemini-model-config to use Gemini
     systemMessage: |
       You are an expert SRE AI agent operating on a production Kubernetes cluster.
       Your job is to autonomously investigate Prometheus alerts and take safe, targeted healing actions.
