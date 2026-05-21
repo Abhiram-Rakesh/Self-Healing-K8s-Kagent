@@ -1,0 +1,38 @@
+# RBAC for the litmus-admin ServiceAccount used by ChaosEngine runners.
+# Apply after installing litmus-core: kubectl apply -f k8s/chaos/litmus-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: litmus-admin
+  namespace: litmus
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: litmus-admin
+rules:
+- apiGroups: [""]
+  resources: ["pods","pods/exec","pods/log","pods/eviction","replicationcontrollers","events","configmaps","secrets","endpoints","services","nodes"]
+  verbs: ["create","delete","get","list","patch","update","deletecollection","watch"]
+- apiGroups: ["apps"]
+  resources: ["daemonsets","deployments","replicasets","statefulsets"]
+  verbs: ["create","delete","get","list","patch","update","deletecollection"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create","delete","get","list","patch","update","deletecollection","watch"]
+- apiGroups: ["litmuschaos.io"]
+  resources: ["chaosengines","chaosexperiments","chaosresults"]
+  verbs: ["create","delete","get","list","patch","update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: litmus-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: litmus-admin
+subjects:
+- kind: ServiceAccount
+  name: litmus-admin
+  namespace: litmus

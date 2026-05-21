@@ -481,23 +481,37 @@ loki-promtail-abcd3                1/1     Running   0          90s
 **Success indicator:** `loki-0` is `Running` and one `loki-promtail-*` pod exists
 per node. In Grafana → Configuration → Data sources you should see **Loki** listed.
 
-#### 5d — Litmus ChaosCenter
+#### 5d — Litmus ChaosCenter + chaos operator
+
+`litmuschaos/litmus` 3.x installs the **ChaosCenter management UI only**. The
+chaos-operator (which provides the `ChaosEngine` / `ChaosExperiment` CRDs and
+runs experiments) ships as a separate chart (`litmus-core`). Both are required.
 
 ```bash
 helm repo add litmuschaos https://litmuschaos.github.io/litmus-helm/
 helm repo update
 
+# ChaosCenter (UI + MongoDB)
 helm install litmus litmuschaos/litmus \
   --namespace litmus --create-namespace \
   --wait
+
+# Chaos operator — installs ChaosEngine / ChaosExperiment / ChaosResult CRDs
+helm install litmus-core litmuschaos/litmus-core \
+  --namespace litmus \
+  --wait
+
+# RBAC for the chaos runner service account
+kubectl apply -f k8s/chaos/litmus-rbac.yaml
 ```
 
 Verify:
 ```bash
 kubectl get pods -n litmus
+kubectl api-resources | grep litmuschaos   # should show chaosengines, chaosexperiments, chaosresults
 ```
 
-**Success indicator:** Litmus frontend / backend / mongo pods all show `Running`.
+**Success indicator:** All Litmus pods `Running` and `chaosengines` CRD present.
 
 #### 5e — kagent framework
 
