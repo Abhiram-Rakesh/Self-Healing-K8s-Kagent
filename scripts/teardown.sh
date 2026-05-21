@@ -28,9 +28,10 @@ read -r -p "Type exactly: \"$CONFIRM_PHRASE\" to proceed > " RESPONSE
 # ---------------------------------------------------------------------------
 log "1) Uninstalling Helm releases"
 for ns_release in \
-    "kagent kagent-healer" \
+    "default kagent-healer" \
     "kagent kagent" \
     "kagent kagent-crds" \
+    "monitoring loki" \
     "monitoring monitoring" \
     "litmus litmus"; do
   ns="${ns_release% *}"; release="${ns_release#* }"
@@ -43,7 +44,13 @@ done
 # ---------------------------------------------------------------------------
 # 2) Delete namespaces (forces remaining workload + PVC cleanup)
 # ---------------------------------------------------------------------------
-log "2) Deleting namespaces"
+log "2) Deleting kagent workloads from default namespace"
+kubectl delete deploy,svc,sa,rolebinding,role \
+  -n default -l app.kubernetes.io/name=kagent-healer --ignore-not-found || true
+kubectl delete deploy,svc,sa,rolebinding,role \
+  -n default -l app.kubernetes.io/part-of=kagent-healer --ignore-not-found || true
+
+log "3) Deleting namespaces"
 for ns in kagent monitoring litmus; do
   if kubectl get ns "$ns" >/dev/null 2>&1; then
     log "  kubectl delete ns $ns"
@@ -54,7 +61,7 @@ done
 # ---------------------------------------------------------------------------
 # 3) Wait for AWS to detach and remove ENIs from the VPC's subnets
 # ---------------------------------------------------------------------------
-log "3) Waiting 60s for AWS to detach ENIs"
+log "4) Waiting 60s for AWS to detach ENIs"
 sleep 60
 
 # ---------------------------------------------------------------------------
@@ -62,7 +69,7 @@ sleep 60
 # ---------------------------------------------------------------------------
 VPC_ID="$(terraform -chdir="$TF_DIR" output -raw vpc_id 2>/dev/null || true)"
 if [[ -n "$VPC_ID" ]]; then
-  log "4) Cleaning leftover ELBs/NLBs in VPC $VPC_ID"
+  log "5) Cleaning leftover ELBs/NLBs in VPC $VPC_ID"
   # ALBs / NLBs
   LB_ARNS="$(aws elbv2 describe-load-balancers --region "$AWS_REGION" \
               --query "LoadBalancers[?VpcId=='$VPC_ID'].LoadBalancerArn" --output text || true)"
@@ -88,7 +95,7 @@ fi
 # ---------------------------------------------------------------------------
 # 5) terraform destroy
 # ---------------------------------------------------------------------------
-log "5) terraform destroy"
+log "6) terraform destroy"
 terraform -chdir="$TF_DIR" destroy -auto-approve || die "terraform destroy failed — see the README troubleshooting section"
 
 ok "Teardown complete."
