@@ -13,9 +13,11 @@ enable_ha_nat       = false
 # Terraform state bucket — create this S3 bucket manually before `terraform init`.
 state_bucket = "REPLACE-WITH-YOUR-TF-STATE-BUCKET"
 
-# Secrets — these are pushed to AWS Secrets Manager by the iam module.
-gemini_api_key    = "REPLACE-WITH-YOUR-GEMINI-API-KEY"
-slack_webhook_url = "" # optional, e.g. "https://hooks.slack.com/services/..."
+# Secrets — pushed to AWS Secrets Manager by the iam module.
+# Default provider is Anthropic Claude — store the key as a K8s secret (see README Step 6).
+# gemini_api_key is only needed if you plan to use the Gemini ModelConfig alternative.
+gemini_api_key    = ""  # optional — leave blank if using Anthropic (Claude)
+slack_webhook_url = ""  # optional, e.g. "https://hooks.slack.com/services/..."
 
 tags = {
   Project   = "self-healing-k8s-kagent"

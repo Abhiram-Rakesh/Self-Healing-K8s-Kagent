@@ -49,7 +49,7 @@ Prometheus → Alertmanager → Bridge (:8000) → kagent Agent (A2A v0.3.0)
 
 **Cost Guard** (`agent/cost_guard.py`):
 - Thread-safe daily budget enforcer (resets at midnight UTC)
-- Used by bridge to cap alerts forwarded per day (proxy for Gemini API calls)
+- Used by bridge to cap alerts forwarded per day (proxy for LLM API calls)
 - Logs warning at 80% consumption
 
 **Main** (`agent/main.py`):
