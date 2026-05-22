@@ -1,12 +1,5 @@
 # Self-Healing Kubernetes Cluster with KAgent
 
-[![CI](https://github.com/Abhiram-Rakesh/Self-Healing-K8s-Kagent/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhiram-Rakesh/Self-Healing-K8s-Kagent/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Kubernetes](https://img.shields.io/badge/kubernetes-1.28%2B-326CE5.svg?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
-[![AWS EKS](https://img.shields.io/badge/AWS-EKS-FF9900.svg?logo=amazonaws&logoColor=white)](https://aws.amazon.com/eks/)
-[![Terraform](https://img.shields.io/badge/terraform-1.10%2B-7B42BC.svg?logo=terraform&logoColor=white)](https://www.terraform.io/)
-
 An AI-powered self-healing platform for Amazon EKS built on the
 [kagent](https://kagent.dev) framework. Prometheus alerts are routed to a thin
 bridge that forwards them to a kagent-managed AI agent. The agent
@@ -340,7 +333,7 @@ Open `terraform/terraform.tfvars` and set these values:
 | `workload_node_count`| `2`                                      | Two = the minimum for HPA experiments                    |
 | `enable_ha_nat`      | `false`                                  | `true` = one NAT GW per AZ (~3x the cost)                |
 | `state_bucket`       | `my-name-tf-state-123456789012`          | The bucket you created in Step 2                         |
-| `gemini_api_key`     | from https://aistudio.google.com         | Optional — only if using Gemini provider; stored in Secrets Manager |
+| `llm_api_key`     | from your LLM provider         | Store in Secrets Manager |
 | `slack_webhook_url`  | optional `https://hooks.slack.com/...`   | Leave empty to disable Slack notifications               |
 
 Initialize, plan, apply:
@@ -366,7 +359,7 @@ aws_region = "ap-south-1"
 cluster_endpoint = "https://EXAMPLE.gr7.ap-south-1.eks.amazonaws.com"
 cluster_name = "self-healing-cluster"
 ecr_repository_url = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/kagent-healer"
-gemini_secret_arn = "arn:aws:secretsmanager:ap-south-1:123456789012:secret:kagent/gemini-api-key-AbCdEf"
+llm_secret_arn = "arn:aws:secretsmanager:ap-south-1:123456789012:secret:kagent/llm-api-key-AbCdEf"
 kagent_irsa_role_arn = "arn:aws:iam::123456789012:role/kagent-healer-irsa"
 kubeconfig_command = "aws eks update-kubeconfig --region ap-south-1 --name self-healing-cluster"
 private_subnet_ids = ["subnet-aaa", "subnet-bbb", "subnet-ccc"]
